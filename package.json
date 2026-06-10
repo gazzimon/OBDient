@@ -1,0 +1,43 @@
+{
+  "name": "obdient",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "expo": "~56.0.9",
+    "expo-dev-client": "~56.0.19",
+    "expo-router": "~56.2.9",
+    "expo-speech": "~56.0.3",
+    "expo-speech-recognition": "^56.0.1",
+    "expo-sqlite": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "nativewind": "^4.2.5",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-bluetooth-classic": "^1.73.0-rc.17",
+    "react-native-mmkv": "^4.3.1",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4",
+    "tailwindcss": "^3.4.19",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild",
+    "prebuild:android": "expo prebuild --platform android",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "private": true
+}
