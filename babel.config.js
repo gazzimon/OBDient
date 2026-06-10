@@ -16,8 +16,8 @@ module.exports = function (api) {
           extensions: ['.ts', '.tsx', '.js', '.jsx'],
         },
       ],
-      // Must be listed last
-      'react-native-reanimated/plugin',
+      // Must be listed last; excluded in Jest because it requires native worklets
+      ...(process.env['JEST_WORKER_ID'] ? [] : ['react-native-reanimated/plugin']),
     ],
   };
 };

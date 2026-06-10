@@ -24,9 +24,14 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@react-native/jest-preset": "^0.86.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "babel-plugin-module-resolver": "^5.0.3",
     "drizzle-kit": "^0.31.10",
+    "jest": "^30.4.2",
+    "jest-expo": "^56.0.4",
+    "ts-jest": "^29.4.11",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -36,6 +41,8 @@
     "web": "expo start --web",
     "prebuild": "expo prebuild",
     "prebuild:android": "expo prebuild --platform android",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio"
   },

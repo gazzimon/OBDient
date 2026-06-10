@@ -33,7 +33,7 @@
       ]
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "root": "src" }],
       "expo-sqlite",
       "expo-dev-client",
       [
@@ -45,6 +45,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      }
     }
   }
 }
