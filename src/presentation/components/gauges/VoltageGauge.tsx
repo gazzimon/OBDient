@@ -1,0 +1,29 @@
+import React from 'react';
+import { CircularGauge } from './CircularGauge';
+import type { ObdParameter } from '@/domain/entities/obd-parameter';
+
+const COLORS = { critical: '#EF4444', warning: '#F59E0B', normal: '#1D9E75' };
+
+interface VoltageGaugeProps {
+  param: ObdParameter | undefined;
+}
+
+export function VoltageGauge({ param }: VoltageGaugeProps) {
+  const value = param?.value ?? 12;
+  const color =
+    param?.alert?.severity === 'critical' ? COLORS.critical :
+    param?.alert?.severity === 'warning'  ? COLORS.warning  :
+    COLORS.normal;
+
+  return (
+    <CircularGauge
+      value={value}
+      min={9}
+      max={16}
+      unit="V"
+      label="Voltage"
+      precision={1}
+      color={color}
+    />
+  );
+}

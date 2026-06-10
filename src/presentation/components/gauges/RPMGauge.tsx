@@ -1,0 +1,28 @@
+import React from 'react';
+import { CircularGauge } from './CircularGauge';
+import type { ObdParameter } from '@/domain/entities/obd-parameter';
+
+const COLORS = { critical: '#EF4444', warning: '#F59E0B', normal: '#1D9E75' };
+
+interface RPMGaugeProps {
+  param: ObdParameter | undefined;
+}
+
+export function RPMGauge({ param }: RPMGaugeProps) {
+  const value = param?.value ?? 0;
+  const color =
+    param?.alert?.severity === 'critical' ? COLORS.critical :
+    param?.alert?.severity === 'warning'  ? COLORS.warning  :
+    COLORS.normal;
+
+  return (
+    <CircularGauge
+      value={value}
+      min={0}
+      max={8000}
+      unit="rpm"
+      label="Engine RPM"
+      color={color}
+    />
+  );
+}
