@@ -41,12 +41,6 @@
         {
           "microphonePermission": "Allow OBDient to use the microphone for voice commands."
         }
-      ],
-      [
-        "react-native-bluetooth-classic",
-        {
-          "bluetoothPermission": "Allow OBDient to connect to your ELM327 OBD-II adapter."
-        }
       ]
     ],
     "experiments": {
