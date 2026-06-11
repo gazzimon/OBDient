@@ -8,15 +8,16 @@ interface AlertBannerProps {
   onDismiss: () => void;
 }
 
+// QVAC style: dark surface with colored outline, never a filled background
 const CONFIG: Record<AlertSeverity, { container: string; text: string; label: string }> = {
   critical: {
-    container: 'bg-red-950 border border-red-600',
-    text:      'text-red-300',
+    container: 'bg-brand-surface border border-brand-red',
+    text:      'text-brand-red',
     label:     'CRITICAL',
   },
   warning: {
-    container: 'bg-amber-950 border border-amber-600',
-    text:      'text-amber-300',
+    container: 'bg-brand-surface border border-brand-amber',
+    text:      'text-brand-amber',
     label:     'WARNING',
   },
 };
@@ -25,15 +26,15 @@ export function AlertBanner({ severity, message, onDismiss }: AlertBannerProps) 
   const { container, text, label } = CONFIG[severity];
 
   return (
-    <View className={`mx-4 mb-3 px-4 py-3 rounded-xl flex-row items-start justify-between ${container}`}>
+    <View className={`mx-4 mb-3 px-4 py-3 rounded-2xl flex-row items-start justify-between ${container}`}>
       <View className="flex-1 mr-3">
-        <Text className={`text-xs font-bold tracking-widest mb-1 ${text}`}>
+        <Text className={`font-mono-bold text-xs mb-1 ${text}`}>
           {label}
         </Text>
-        <Text className={`text-sm leading-5 ${text}`}>{message}</Text>
+        <Text className="text-brand-text font-mono text-sm leading-5">{message}</Text>
       </View>
       <Pressable onPress={onDismiss} className="mt-0.5 active:opacity-60" hitSlop={8}>
-        <Text className={`text-lg leading-none ${text}`}>✕</Text>
+        <Text className={`font-mono text-lg leading-none ${text}`}>✕</Text>
       </Pressable>
     </View>
   );

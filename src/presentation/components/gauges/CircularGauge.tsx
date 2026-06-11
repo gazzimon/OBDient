@@ -26,12 +26,13 @@ export interface CircularGaugeProps {
   strokeWidth?: number;
 }
 
-const TEAL = '#1D9E75';
-const TRACK_COLOR = '#1F1F1F';
-// 270° sweep: arc covers 75% of circumference, gap covers 25% (bottom center)
-const SWEEP_RATIO = 0.75;
-// Gap starts at 225° clockwise from 12 o'clock → 135° in SVG coords (0 = 3 o'clock)
-const START_ROTATION = 135;
+// QVAC mint accent
+const TEAL = '#2DE1A5';
+const TRACK_COLOR = '#2C2C2E';
+// 180° semicircle (QVAC TDEE-style gauge): arc covers half the circumference
+const SWEEP_RATIO = 0.5;
+// Arc spans from 9 o'clock over the top to 3 o'clock → start at 180° in SVG coords
+const START_ROTATION = 180;
 
 export function CircularGauge({
   value,
@@ -64,11 +65,14 @@ export function CircularGauge({
 
   const displayText = isNaN(value) ? '--' : value.toFixed(precision);
 
+  // Semicircle: clip the empty bottom half of the SVG square
+  const clippedHeight = size * 0.68;
+
   return (
     <View className="items-center">
-      <View style={{ width: size, height: size }}>
+      <View style={{ width: size, height: clippedHeight, overflow: 'hidden' }}>
         <Svg width={size} height={size}>
-          {/* Background track — full 270° arc */}
+          {/* Background track — 180° arc */}
           <Circle
             cx={cx}
             cy={cx}
@@ -76,7 +80,7 @@ export function CircularGauge({
             stroke={TRACK_COLOR}
             strokeWidth={strokeWidth}
             fill="none"
-            strokeLinecap="butt"
+            strokeLinecap="round"
             strokeDasharray={[arcLength, gapLength]}
             rotation={START_ROTATION}
             origin={`${cx},${cx}`}
@@ -97,22 +101,22 @@ export function CircularGauge({
           />
         </Svg>
 
-        {/* Value + unit centered over the SVG */}
+        {/* Value + unit centered inside the semicircle */}
         <View
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          className="items-center justify-center"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: clippedHeight }}
+          className="items-center justify-end"
         >
           <Text
-            className="text-white font-bold"
-            style={{ fontSize: size * 0.175 }}
+            className="text-brand-text font-mono-bold"
+            style={{ fontSize: size * 0.16 }}
           >
             {displayText}
           </Text>
-          <Text className="text-gray-400 text-xs mt-0.5">{unit}</Text>
+          <Text className="text-brand-muted font-mono text-xs mt-0.5">{unit}</Text>
         </View>
       </View>
 
-      <Text className="text-gray-500 text-xs mt-1 tracking-wide uppercase">
+      <Text className="text-brand-muted font-mono text-xs mt-2">
         {label}
       </Text>
     </View>

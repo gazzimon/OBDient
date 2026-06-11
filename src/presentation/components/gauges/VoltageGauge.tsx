@@ -2,7 +2,7 @@ import React from 'react';
 import { CircularGauge } from './CircularGauge';
 import type { ObdParameter } from '@/domain/entities/obd-parameter';
 
-const COLORS = { critical: '#EF4444', warning: '#F59E0B', normal: '#1D9E75' };
+const COLORS = { critical: '#F26D6D', warning: '#F5A623', normal: '#2DE1A5' };
 
 interface VoltageGaugeProps {
   param: ObdParameter | undefined;
