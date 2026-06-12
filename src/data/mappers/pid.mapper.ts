@@ -19,7 +19,13 @@ export function mapRawResponseToObdParameter(
     throw new ParseError(rawResponse, err);
   }
 
-  const alert = evaluateAlerts(pidId, value);
+  return buildObdParameter(pidId, value);
+}
+
+// Builds an ObdParameter from an already-parsed numeric value.
+// Used by the real pipeline above and by the mock data generator.
+export function buildObdParameter(pidId: PidId, value: number): ObdParameter {
+  const def = PID_DEFINITIONS[pidId];
 
   return {
     pid: pidId,
@@ -27,7 +33,7 @@ export function mapRawResponseToObdParameter(
     value,
     unit: def.unit,
     timestamp: new Date(),
-    alert,
+    alert: evaluateAlerts(pidId, value),
   };
 }
 

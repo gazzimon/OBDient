@@ -1,0 +1,73 @@
+// Generates realistic oscillating OBD values for emulator/demo use —
+// the emulator has no Bluetooth, so the Dashboard is validated with this first.
+// Goes through buildObdParameter so alert thresholds behave exactly like real data.
+
+import { useEffect, useState } from 'react';
+import { buildObdParameter } from '@/data/mappers/pid.mapper';
+import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
+import type { PidId } from '@/core/constants/pids';
+
+interface MockProfile {
+  base: number;
+  // Oscillation amplitude around base
+  amplitude: number;
+  // Oscillation period in seconds
+  periodS: number;
+  // Random jitter added each tick
+  jitter: number;
+}
+
+const PROFILES: Record<PidId, MockProfile> = {
+  RPM:          { base: 1900, amplitude: 1100, periodS: 8,  jitter: 90 },
+  SPEED:        { base: 55,   amplitude: 35,   periodS: 14, jitter: 2 },
+  // Slowly climbs from cold start toward operating temp (handled below)
+  COOLANT_TEMP: { base: 88,   amplitude: 4,    periodS: 60, jitter: 0.5 },
+  ENGINE_LOAD:  { base: 45,   amplitude: 25,   periodS: 8,  jitter: 3 },
+  MAF:          { base: 14,   amplitude: 9,    periodS: 8,  jitter: 1 },
+  TPS:          { base: 30,   amplitude: 22,   periodS: 8,  jitter: 2 },
+  IAT:          { base: 32,   amplitude: 3,    periodS: 40, jitter: 0.5 },
+  VOLTAGE:      { base: 13.8, amplitude: 0.4,  periodS: 20, jitter: 0.05 },
+};
+
+// Coolant warm-up: reaches ~95% of operating temp after this many seconds
+const WARMUP_SECONDS = 45;
+const COLD_START_TEMP = 20;
+
+function mockValue(pid: PidId, elapsedS: number): number {
+  const p = PROFILES[pid];
+  const wave = Math.sin((2 * Math.PI * elapsedS) / p.periodS);
+  const noise = (Math.random() * 2 - 1) * p.jitter;
+  let value = p.base + p.amplitude * wave + noise;
+
+  if (pid === 'COOLANT_TEMP') {
+    // Exponential warm-up curve from cold start to base temp
+    const warmup = 1 - Math.exp((-3 * elapsedS) / WARMUP_SECONDS);
+    value = COLD_START_TEMP + (p.base - COLD_START_TEMP) * warmup + noise;
+  }
+
+  // Round to match real-world parser precision
+  return pid === 'VOLTAGE' ? Math.round(value * 10) / 10 : Math.round(value);
+}
+
+export function useMockParameters(intervalMs = 500): ObdParameterSnapshot {
+  const [snapshot, setSnapshot] = useState<ObdParameterSnapshot>({});
+
+  useEffect(() => {
+    const startedAt = Date.now();
+
+    const tick = () => {
+      const elapsedS = (Date.now() - startedAt) / 1000;
+      const next: ObdParameterSnapshot = {};
+      for (const pid of Object.keys(PROFILES) as PidId[]) {
+        next[pid] = buildObdParameter(pid, mockValue(pid, elapsedS));
+      }
+      setSnapshot(next);
+    };
+
+    tick();
+    const handle = setInterval(tick, intervalMs);
+    return () => clearInterval(handle);
+  }, [intervalMs]);
+
+  return snapshot;
+}

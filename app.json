@@ -33,7 +33,7 @@
       ]
     },
     "plugins": [
-      ["expo-router", { "root": "src" }],
+      ["expo-router", { "root": "src/app" }],
       "expo-sqlite",
       "expo-dev-client",
       [

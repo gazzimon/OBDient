@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
+    "@expo/vector-icons": "^15.1.1",
     "drizzle-orm": "^0.45.2",
     "expo": "~56.0.9",
     "expo-dev-client": "~56.0.19",

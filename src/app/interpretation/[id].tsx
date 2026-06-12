@@ -1,0 +1,117 @@
+// Saved session detail: final parameter snapshot, DTCs, and AI interpretation.
+
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { container } from '@/data/container';
+import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
+import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCodeCard';
+import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
+import type { ObdParameter } from '@/domain/entities/obd-parameter';
+
+function ParameterRow({ param }: { param: ObdParameter }) {
+  return (
+    <View className="flex-row items-center justify-between py-2 border-b border-brand-border">
+      <Text className="text-brand-muted font-mono text-sm">{param.name}</Text>
+      <Text className="text-brand-text font-mono text-sm">
+        {param.value} {param.unit}
+      </Text>
+    </View>
+  );
+}
+
+export default function InterpretationScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const [session, setSession] = useState<DiagnosticSession | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    if (id == null) return;
+    container.reportRepo
+      .getSessionById(id)
+      .then((s) => (s != null ? setSession(s) : setNotFound(true)))
+      .catch(() => setNotFound(true));
+  }, [id]);
+
+  const params = session != null ? Object.values(session.parameters) : [];
+
+  return (
+    <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
+      {/* Top bar: back arrow + centered title (QVAC pattern) */}
+      <View className="flex-row items-center px-4 py-3">
+        <Pressable onPress={() => router.back()} hitSlop={12} className="active:opacity-60">
+          <MaterialCommunityIcons name="arrow-left" size={22} color="#F5F5F5" />
+        </Pressable>
+        <Text className="flex-1 text-center text-brand-text font-mono text-base mr-6">
+          Session Report
+        </Text>
+      </View>
+
+      <ScrollView
+        className="flex-1 px-4"
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {notFound && (
+          <Text className="text-brand-muted font-mono text-sm text-center py-12">
+            Session not found.
+          </Text>
+        )}
+
+        {session != null && (
+          <>
+            <Text className="text-brand-teal font-mono-bold text-sm mb-1">
+              {session.startedAt.toLocaleDateString()}
+            </Text>
+            <Text className="text-brand-muted font-mono text-xs mb-6">
+              {session.startedAt.toLocaleTimeString()}
+              {session.endedAt != null && ` — ${session.endedAt.toLocaleTimeString()}`}
+              {' · '}
+              {session.status}
+            </Text>
+
+            {session.interpretation != null && (
+              <View className="mb-6">
+                <SectionHeader title="AI Interpretation" />
+                <View className="bg-brand-surface rounded-2xl p-4">
+                  <Text className="text-brand-text font-mono text-sm leading-6">
+                    {session.interpretation}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <SectionHeader title={`Trouble Codes (${session.troubleCodes.length})`} />
+            {session.troubleCodes.length === 0 ? (
+              <Text className="text-brand-muted font-mono text-sm mb-6">
+                No DTCs recorded in this session.
+              </Text>
+            ) : (
+              <View className="mb-3">
+                {session.troubleCodes.map((code) => (
+                  <TroubleCodeCard key={code.id} code={code} />
+                ))}
+              </View>
+            )}
+
+            <SectionHeader title="Final Parameters" />
+            {params.length === 0 ? (
+              <Text className="text-brand-muted font-mono text-sm">
+                No parameter snapshot recorded.
+              </Text>
+            ) : (
+              <View className="bg-brand-surface rounded-2xl px-4 py-2">
+                {params.map((param) => (
+                  <ParameterRow key={param.pid} param={param} />
+                ))}
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

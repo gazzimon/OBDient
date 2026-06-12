@@ -16,6 +16,9 @@ const llmRepo = new LLMRepositoryImpl();
 const reportRepo = new ReportRepositoryImpl();
 
 export const container = {
+  // Direct read access for the reports screen (list/detail/delete are queries,
+  // not use cases with business rules)
+  reportRepo,
   connectToVehicle: new ConnectToVehicleUseCase(obdRepo),
   readRealTimeParameters: new ReadRealTimeParametersUseCase(obdRepo),
   readTroubleCodes: new ReadTroubleCodesUseCase(obdRepo),
