@@ -5,7 +5,7 @@
 import { sha1 } from '@/core/utils/sha1';
 
 const API_KEY    = process.env.EXPO_PUBLIC_VINCARIO_API_KEY ?? '';
-const SECRET_KEY = process.env.VINCARIO_SECRET_KEY         ?? '';
+const SECRET_KEY = process.env.EXPO_PUBLIC_VINCARIO_SECRET_KEY ?? '';
 const BASE_URL   = 'https://api.vincario.com/3.2';
 
 export interface VehicleInfo {
