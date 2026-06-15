@@ -185,7 +185,7 @@ export default function SettingsScreen() {
         <View className="bg-brand-surface rounded-2xl px-4 py-1">
           <SettingsRow>
             <Text className="text-brand-text font-mono text-sm">App version</Text>
-            <Text className="text-brand-teal font-mono text-sm">v0.1.0 (MVP)</Text>
+            <Text className="text-brand-teal font-mono text-sm">v0.1.1 (ATZ fix)</Text>
           </SettingsRow>
         </View>
       </ScrollView>

@@ -1,5 +1,7 @@
 // SQLite storage datasource using Drizzle ORM + expo-sqlite.
 // Opens a single database connection shared across the app.
+// All write operations are serialized through a promise queue to prevent
+// concurrent mutations on the single SQLite connection.
 
 import * as ExpoSQLite from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
@@ -28,10 +30,30 @@ function getDb() {
   return _db;
 }
 
-// Runs all CREATE TABLE IF NOT EXISTS statements
+// ─── Write serialization queue ────────────────────────────────────────────────
+// SQLite allows one writer at a time. This queue ensures mutations never race,
+// even when callers don't await properly.
+
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueWrite<T>(label: string, fn: () => T): Promise<T> {
+  const next = writeQueue.then(() => {
+    try {
+      return fn();
+    } catch (err) {
+      throw new DatabaseError(`Failed to ${label}`, err);
+    }
+  });
+  // Always reset to resolved so future writes aren't blocked by a failed write
+  writeQueue = next.catch(() => undefined);
+  return next;
+}
+
+// ─── Database initialization ──────────────────────────────────────────────────
+
 export async function initializeDatabase(): Promise<void> {
-  const db = getDb();
-  try {
+  return enqueueWrite('initialize database', () => {
+    const db = getDb();
     db.run(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id TEXT PRIMARY KEY,
@@ -80,32 +102,27 @@ export async function initializeDatabase(): Promise<void> {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
     `);
-  } catch (err) {
-    throw new DatabaseError('Failed to initialize database', err);
-  }
+  });
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
-export async function insertSession(row: typeof sessionsTable.$inferInsert): Promise<void> {
-  try {
+export function insertSession(row: typeof sessionsTable.$inferInsert): Promise<void> {
+  return enqueueWrite('insert session', () => {
     getDb().insert(sessionsTable).values(row).run();
-  } catch (err) {
-    throw new DatabaseError('Failed to insert session', err);
-  }
+  });
 }
 
-export async function updateSession(
+export function updateSession(
   id: string,
   patch: Partial<typeof sessionsTable.$inferInsert>,
 ): Promise<void> {
-  try {
+  return enqueueWrite('update session', () => {
     getDb().update(sessionsTable).set(patch).where(eq(sessionsTable.id, id)).run();
-  } catch (err) {
-    throw new DatabaseError('Failed to update session', err);
-  }
+  });
 }
 
+// Reads are concurrent — no queue needed (SQLite allows parallel reads)
 export async function getSessionById(id: string): Promise<SessionRow | null> {
   try {
     const rows = getDb().select().from(sessionsTable).where(eq(sessionsTable.id, id)).all();
@@ -128,24 +145,20 @@ export async function listSessions(limit = 50): Promise<SessionRow[]> {
   }
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  try {
+export function deleteSession(id: string): Promise<void> {
+  return enqueueWrite('delete session', () => {
     getDb().delete(sessionsTable).where(eq(sessionsTable.id, id)).run();
-  } catch (err) {
-    throw new DatabaseError('Failed to delete session', err);
-  }
+  });
 }
 
 // ─── Trouble codes ────────────────────────────────────────────────────────────
 
-export async function insertTroubleCode(
+export function insertTroubleCode(
   row: typeof troubleCodesTable.$inferInsert,
 ): Promise<void> {
-  try {
+  return enqueueWrite('insert trouble code', () => {
     getDb().insert(troubleCodesTable).values(row).run();
-  } catch (err) {
-    throw new DatabaseError('Failed to insert trouble code', err);
-  }
+  });
 }
 
 export async function getTroubleCodesBySession(sessionId: string): Promise<TroubleCodeRow[]> {
@@ -162,26 +175,22 @@ export async function getTroubleCodesBySession(sessionId: string): Promise<Troub
 
 // ─── Vehicles ─────────────────────────────────────────────────────────────────
 
-export async function upsertVehicle(row: typeof vehiclesTable.$inferInsert): Promise<void> {
-  try {
+export function upsertVehicle(row: typeof vehiclesTable.$inferInsert): Promise<void> {
+  return enqueueWrite('upsert vehicle', () => {
     getDb()
       .insert(vehiclesTable)
       .values(row)
       .onConflictDoUpdate({ target: vehiclesTable.id, set: row })
       .run();
-  } catch (err) {
-    throw new DatabaseError('Failed to upsert vehicle', err);
-  }
+  });
 }
 
 // ─── PID readings ─────────────────────────────────────────────────────────────
 
-export async function insertPidReading(
+export function insertPidReading(
   row: typeof pidReadingsTable.$inferInsert,
 ): Promise<void> {
-  try {
+  return enqueueWrite('insert PID reading', () => {
     getDb().insert(pidReadingsTable).values(row).run();
-  } catch (err) {
-    throw new DatabaseError('Failed to insert PID reading', err);
-  }
+  });
 }

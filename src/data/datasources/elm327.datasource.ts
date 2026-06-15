@@ -1,6 +1,12 @@
 // ELM327 Bluetooth Classic datasource.
 // Manages a single-command queue (ELM327 is strictly synchronous),
 // adapter initialization sequence, and automatic reconnection.
+//
+// Queue resilience: after any command error, the queue resets to a resolved
+// promise so subsequent commands always execute — no silent starvation.
+//
+// Circuit breaker: after CIRCUIT_OPEN_THRESHOLD consecutive failures the
+// adapter pauses CIRCUIT_RESET_MS before trying again, preventing error storms.
 
 import RNBluetoothClassic, {
   BluetoothDevice,
@@ -14,27 +20,66 @@ import {
   NoDataError,
 } from '@/core/errors/obd.errors';
 
-const COMMAND_TIMEOUT_MS = 2000;
-const ATZ_TIMEOUT_MS = 6000;
-const RECONNECT_INTERVAL_MS = 5000;
-const MAX_RECONNECT_ATTEMPTS = 3;
-const PROMPT_CHAR = '>';
+const COMMAND_TIMEOUT_MS        = 2000;
+const ATZ_TIMEOUT_MS            = 6000;
+const RECONNECT_INTERVAL_MS     = 5000;
+const MAX_RECONNECT_ATTEMPTS    = 3;
+const CIRCUIT_OPEN_THRESHOLD    = 5;   // consecutive failures before pausing
+const CIRCUIT_RESET_MS          = 10_000;
+const HEALTH_CHECK_INTERVAL_MS  = 30_000;
+const PROMPT_CHAR               = '>';
 
 // AT initialization sequence for ELM327 HS Line
 const INIT_SEQUENCE = ['ATZ', 'ATL0', 'ATE0', 'ATSP0'] as const;
 
+export type AdapterEvent =
+  | { type: 'queue-error';      command: string; error: string }
+  | { type: 'circuit-open';     consecutiveFailures: number }
+  | { type: 'circuit-reset' }
+  | { type: 'reconnecting';     attempt: number; max: number }
+  | { type: 'reconnect-failed' }
+  | { type: 'health-check-ok' }
+  | { type: 'health-check-fail'; error: string };
+
+export type AdapterEventListener = (event: AdapterEvent) => void;
+
 export class ELM327DataSource {
   private device: BluetoothDevice | null = null;
-  private deviceAddress: string | null = null;
-  private connected = false;
-  // Serializes all commands — only one can be in-flight at a time
-  private commandQueue: Promise<string> = Promise.resolve('');
+  private deviceAddress: string | null   = null;
+  private connected                       = false;
+
+  // Queue: always a resolved/pending promise — never rejected — so the next
+  // command always gets to run. The per-command result is returned separately.
+  private commandQueue: Promise<void> = Promise.resolve();
+
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Circuit breaker state
+  private consecutiveFailures = 0;
+  private circuitOpen         = false;
+
+  // Health check
+  private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Optional event listener for non-blocking UI feedback
+  private eventListener: AdapterEventListener | null = null;
+
+  setEventListener(listener: AdapterEventListener | null): void {
+    this.eventListener = listener;
+  }
+
+  private emit(event: AdapterEvent): void {
+    this.eventListener?.(event);
+  }
+
+  // ─── Public API ─────────────────────────────────────────────────────────────
+
   async connect(address: string): Promise<string> {
-    this.deviceAddress = address;
+    this.deviceAddress   = address;
     this.reconnectAttempts = 0;
+    this.consecutiveFailures = 0;
+    this.circuitOpen     = false;
 
     try {
       this.device = await RNBluetoothClassic.connectToDevice(address);
@@ -49,10 +94,13 @@ export class ELM327DataSource {
 
     // Detect OBD protocol via ATDP (describe protocol)
     const protocol = await this.sendRaw('ATDP');
+
+    this.startHealthCheck();
     return protocol;
   }
 
   async disconnect(): Promise<void> {
+    this.stopHealthCheck();
     this.clearReconnectTimer();
     this.connected = false;
     if (this.device) {
@@ -68,20 +116,95 @@ export class ELM327DataSource {
     return this.connected && this.device !== null;
   }
 
-  // Enqueues a command — the queue ensures no two commands run concurrently
+  // Enqueues a command. The queue chain always resolves (never rejects) so
+  // a failed command doesn't starve subsequent ones.
   async sendCommand(command: string): Promise<string> {
-    this.commandQueue = this.commandQueue.then(() =>
-      this.sendRaw(command).catch(async (err) => {
-        if (err instanceof ConnectionLostError) {
-          await this.handleDisconnect();
-        }
-        throw err;
-      }),
-    );
-    return this.commandQueue;
+    // Circuit breaker: if too many consecutive failures, pause before queuing
+    if (this.circuitOpen) {
+      throw new ConnectionLostError(
+        'Adapter circuit breaker open — too many consecutive failures',
+      );
+    }
+
+    let resolveResult!: (value: string) => void;
+    let rejectResult!: (reason: unknown) => void;
+    const result = new Promise<string>((res, rej) => {
+      resolveResult = res;
+      rejectResult  = rej;
+    });
+
+    // Chain onto queue; queue promise itself never rejects
+    this.commandQueue = this.commandQueue.then(async () => {
+      try {
+        const response = await this.sendRaw(command);
+        this.consecutiveFailures = 0;
+        resolveResult(response);
+      } catch (err) {
+        this.handleCommandError(command, err);
+        rejectResult(err);
+      }
+    });
+
+    return result;
   }
 
-  // Sends a raw AT/OBD command and waits for the '>' prompt
+  // ─── Error handling & circuit breaker ───────────────────────────────────────
+
+  private handleCommandError(command: string, err: unknown): void {
+    this.consecutiveFailures++;
+    this.emit({
+      type: 'queue-error',
+      command,
+      error: err instanceof Error ? err.message : String(err),
+    });
+
+    if (err instanceof ConnectionLostError) {
+      // Attempt reconnection in background — does not block the queue
+      this.handleDisconnect().catch(() => undefined);
+    }
+
+    if (this.consecutiveFailures >= CIRCUIT_OPEN_THRESHOLD) {
+      this.openCircuit();
+    }
+  }
+
+  private openCircuit(): void {
+    this.circuitOpen = true;
+    this.emit({ type: 'circuit-open', consecutiveFailures: this.consecutiveFailures });
+    setTimeout(() => {
+      this.circuitOpen         = false;
+      this.consecutiveFailures = 0;
+      this.emit({ type: 'circuit-reset' });
+    }, CIRCUIT_RESET_MS);
+  }
+
+  // ─── Health check ────────────────────────────────────────────────────────────
+
+  private startHealthCheck(): void {
+    this.stopHealthCheck();
+    this.healthCheckTimer = setInterval(async () => {
+      if (!this.isConnected() || this.circuitOpen) return;
+      try {
+        await this.sendRaw('ATI', COMMAND_TIMEOUT_MS);
+        this.emit({ type: 'health-check-ok' });
+      } catch (err) {
+        this.emit({
+          type: 'health-check-fail',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthCheckTimer !== null) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
+  }
+
+  // ─── Raw I/O ────────────────────────────────────────────────────────────────
+
   private async sendRaw(command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<string> {
     if (!this.device) throw new ConnectionLostError('No device connected');
 
@@ -99,7 +222,7 @@ export class ELM327DataSource {
   // Reads data until '>' prompt or timeout
   private async waitForResponse(command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      let buffer = '';
+      let buffer   = '';
       let timedOut = false;
 
       const timeout = setTimeout(() => {
@@ -152,7 +275,8 @@ export class ELM327DataSource {
     );
   }
 
-  // Runs the AT initialization sequence after connecting
+  // ─── Initialization ──────────────────────────────────────────────────────────
+
   private async runInitSequence(): Promise<void> {
     for (const cmd of INIT_SEQUENCE) {
       try {
@@ -179,16 +303,20 @@ export class ELM327DataSource {
     }
   }
 
-  // Called when a command detects the connection was lost
+  // ─── Reconnection ────────────────────────────────────────────────────────────
+
   private async handleDisconnect(): Promise<void> {
-    this.device = null;
+    this.device    = null;
     this.connected = false;
+    this.stopHealthCheck();
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      this.emit({ type: 'reconnect-failed' });
       throw new MaxReconnectAttemptsError(MAX_RECONNECT_ATTEMPTS);
     }
 
     this.reconnectAttempts++;
+    this.emit({ type: 'reconnecting', attempt: this.reconnectAttempts, max: MAX_RECONNECT_ATTEMPTS });
 
     await this.delay(RECONNECT_INTERVAL_MS);
 

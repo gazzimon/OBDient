@@ -6,9 +6,12 @@ import React, {
   useContext,
   useCallback,
   useState,
+  useRef,
+  useEffect,
   type ReactNode,
 } from 'react';
-import { PermissionsAndroid, Platform } from 'react-native';
+import { AppState, PermissionsAndroid, Platform } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -50,6 +53,22 @@ async function requestBluetoothPermissions(): Promise<boolean> {
   return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
+// Persists the current active session to SQLite. Fire-and-forget — never throws.
+async function persistSession(reason: string): Promise<void> {
+  const session = useSessionStore.getState().activeSession;
+  const parameters = useOBDStore.getState().parameters;
+  if (!session) return;
+  try {
+    await container.saveDiagnosticReport.execute({
+      session,
+      finalParameters: parameters,
+    });
+    console.log(`[BluetoothProvider] Session persisted (${reason})`);
+  } catch (err) {
+    console.error(`[BluetoothProvider] Failed to persist session (${reason}):`, err);
+  }
+}
+
 export function useBluetoothContext(): BluetoothContextValue {
   const ctx = useContext(BluetoothContext);
   if (ctx == null) throw new Error('useBluetoothContext must be used inside BluetoothProvider');
@@ -59,6 +78,9 @@ export function useBluetoothContext(): BluetoothContextValue {
 interface BluetoothProviderProps {
   children: ReactNode;
 }
+
+// Auto-save active session every 30 seconds to protect against crashes/force-close.
+const AUTO_SAVE_INTERVAL_MS = 30_000;
 
 export function BluetoothProvider({ children }: BluetoothProviderProps) {
   const [pairedDevices, setPairedDevices] = useState<readonly BluetoothDevice[]>([]);
@@ -72,11 +94,38 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
   const endSession       = useSessionStore((s) => s.endSession);
   const setLastDevice    = useSettingsStore((s) => s.setLastDeviceAddress);
 
+  const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopAutoSave = useCallback(() => {
+    if (autoSaveTimer.current !== null) {
+      clearInterval(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+  }, []);
+
+  const startAutoSave = useCallback(() => {
+    stopAutoSave();
+    autoSaveTimer.current = setInterval(() => {
+      void persistSession('auto-save');
+    }, AUTO_SAVE_INTERVAL_MS);
+  }, [stopAutoSave]);
+
   // Ensure DB tables exist before first use
-  React.useEffect(() => {
+  useEffect(() => {
     initializeDatabase().catch((err) =>
       console.error('[BluetoothProvider] DB init error:', err),
     );
+  }, []);
+
+  // Save session when the app goes to background (user switches apps, locks screen, etc.)
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        void persistSession('app-background');
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
   }, []);
 
   const scanPairedDevices = useCallback(async () => {
@@ -108,22 +157,37 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
         setConnected(vehicle);
         setLastDevice(device.address);
         startSession(vehicle.id);
+        startAutoSave();
       } catch (err) {
         setDisconnected();
         setConnectError(err instanceof Error ? err.message : 'Connection failed');
       }
     },
-    [setConnecting, setConnected, setDisconnected, setLastDevice, startSession],
+    [setConnecting, setConnected, setDisconnected, setLastDevice, startSession, startAutoSave],
   );
 
   const disconnect = useCallback(() => {
-    // Close the physical BT socket first, then update UI state
+    stopAutoSave();
+
+    // Snapshot parameters into the session before ending it
+    const parameters = useOBDStore.getState().parameters;
+    useSessionStore.getState().snapshotParameters(parameters);
+    endSession('interrupted');
+
+    // Persist to SQLite before closing the BT socket
+    void persistSession('disconnect');
+
+    // Close the physical BT socket
     container.obdRepo.disconnect().catch((err) => {
       console.warn('[BluetoothProvider] disconnect error:', err);
     });
-    endSession('interrupted');
     setDisconnected();
-  }, [endSession, setDisconnected]);
+  }, [endSession, setDisconnected, stopAutoSave]);
+
+  // Clean up timer if component unmounts while connected
+  useEffect(() => {
+    return () => stopAutoSave();
+  }, [stopAutoSave]);
 
   return (
     <BluetoothContext.Provider
