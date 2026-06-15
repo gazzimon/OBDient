@@ -12,6 +12,7 @@ import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
+import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -53,6 +54,7 @@ export default function SettingsScreen() {
     setModelLoading(true);
     qvacSDK
       .initialize((p) => setModelProgress(p))
+      .then(() => qvacRag.initialize((p) => setModelProgress(p)))
       .then(() => { setModelLoaded(true); setModelLoading(false); })
       .catch(() => { setModelLoading(false); });
   };
@@ -179,7 +181,7 @@ export default function SettingsScreen() {
             <View>
               <Text className="text-brand-text font-mono text-sm">On-device model</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Llama 3.2 · runs offline · no internet needed
+                Llama 3.2 + on-device RAG · runs offline
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>

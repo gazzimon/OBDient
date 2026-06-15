@@ -3,6 +3,7 @@
 // Falls back to rule-based messages if the model is not loaded yet.
 
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
+import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 import { isQvacError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
@@ -11,10 +12,19 @@ import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 export class LLMRepositoryImpl implements ILLMRepository {
   async interpret(request: LLMInterpretationRequest): Promise<LLMInterpretationResult> {
     try {
+      // Retrieve relevant repair knowledge on-device (RAG). Returns [] if the
+      // RAG index isn't ready yet, so interpretation degrades gracefully.
+      const query = this.buildRetrievalQuery(
+        request.parameters,
+        request.troubleCodes,
+      );
+      const knowledge = await qvacRag.search(query, 4);
+
       const result = await qvacSDK.interpret(
         request.parameters,
         request.troubleCodes,
         request.vehicleContext,
+        knowledge,
       );
       return { ...result, isAiGenerated: true };
     } catch (err) {
@@ -31,6 +41,27 @@ export class LLMRepositoryImpl implements ILLMRepository {
 
   async isAvailable(): Promise<boolean> {
     return qvacSDK.isLoaded();
+  }
+
+  // Builds a retrieval query from active fault codes and alerting parameters.
+  // This text is embedded and matched against the on-device knowledge base.
+  private buildRetrievalQuery(
+    parameters: ObdParameterSnapshot,
+    troubleCodes: readonly TroubleCode[],
+  ): string {
+    const parts: string[] = [];
+
+    for (const dtc of troubleCodes) {
+      parts.push(`${dtc.code} ${dtc.description}`);
+    }
+
+    for (const param of Object.values(parameters)) {
+      if (param?.alert) {
+        parts.push(`${param.name} ${param.alert.severity}`);
+      }
+    }
+
+    return parts.join('; ') || 'general vehicle health check';
   }
 
   // Rule-based fallback when the model is not loaded yet

@@ -40,6 +40,21 @@ loaded into RAM directly on the device; every diagnostic interpretation is a loc
 > The QVAC SDK is integrated via the Expo config plugin `@qvac/sdk/expo-plugin`
 > (see `app.json`). The Bare worker bundle lives in `qvac/`.
 
+### Retrieval-Augmented Generation (on-device)
+
+Before each interpretation, OBDient retrieves the most relevant repair knowledge
+from a local vector store and feeds it to the LLM as grounding context — all on the
+device, using QVAC's built-in RAG pipeline (`ragIngest` / `ragSearch`).
+
+- Embedding model: `EmbeddingGemma 300M` (4-bit), loaded separately from the chat LLM.
+- Knowledge corpus: a curated OBD-II DTC / repair knowledge base in
+  `src/data/knowledge/obd-knowledge.ts`, ingested once into a persistent workspace.
+- Retrieval glue: `src/data/datasources/qvac-rag.datasource.ts`; the active fault
+  codes and alerting parameters form the query, and the top matches are injected
+  into the prompt by `LLMRepositoryImpl`.
+- Graceful by design: if the RAG index isn't ready, search returns nothing and the
+  assistant still answers from the live OBD data.
+
 ## Architecture
 
 Clean architecture, framework-agnostic core:
@@ -149,12 +164,11 @@ connect-to-vehicle use case (`src/__tests__/`).
 | All AI inference via QVAC SDK                   | ✅     | `src/data/datasources/qvac-sdk.datasource.ts`    |
 | Runs on real consumer hardware (Mobile track)  | ✅     | Android phone + ELM327, this README              |
 | Reproducibility + hardware setup instructions  | ✅     | This README                                      |
-| RAG via QVAC SDK                                | 🚧     | In progress (QVAC embeddings over DTC/NHTSA data)|
+| RAG via QVAC SDK                               | ✅     | `src/data/datasources/qvac-rag.datasource.ts`    |
 | Complete artifacts (logs, demo, hardware proof)| 🚧     | See `/artifacts` (demo video, profiler logs)     |
 
 ## Roadmap (in progress for submission)
 
-- **RAG** over a local DTC / NHTSA repair knowledge base using QVAC embeddings.
 - **Tool calling & multi-agent orchestration**: expose OBD read, DTC lookup, NHTSA
   recall check and VIN decode as native QVAC tools.
 - **QVAC Psy model** evaluation for the diagnostic reasoning step.

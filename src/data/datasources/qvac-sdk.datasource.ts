@@ -35,6 +35,8 @@ const DEFAULT_MODEL = LLAMA_3_2_1B_INST_Q4_0;
 
 const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
 You receive real-time OBD-II vehicle data and fault codes.
+When a "Relevant diagnostic knowledge" section is provided, use it to ground your
+explanation and recommended actions; prefer it over your own assumptions.
 Always respond in English, clearly and concisely.
 If there are active DTC codes, explain what they mean and what to do.
 If parameters are normal, say so briefly.
@@ -56,13 +58,9 @@ export class QvacSDKDataSource {
 
     this.loadingPromise = (async () => {
       try {
-        this.modelId = await loadModel({
-          modelSrc: DEFAULT_MODEL,
-          onProgress: (p: number) => {
-            this.loadProgress = p;
-            onProgress?.(p);
-          },
-        });
+        this.modelId = await loadModel({ modelSrc: DEFAULT_MODEL });
+        this.loadProgress = 1;
+        onProgress?.(1);
       } catch (err) {
         this.loadingPromise = null;
         throw new QvacUnavailableError(
@@ -87,7 +85,7 @@ export class QvacSDKDataSource {
   async dispose(): Promise<void> {
     if (this.modelId === null) return;
     try {
-      await unloadModel(this.modelId);
+      await unloadModel({ modelId: this.modelId });
     } finally {
       this.modelId = null;
       this.loadingPromise = null;
@@ -99,6 +97,7 @@ export class QvacSDKDataSource {
     parameters: ObdParameterSnapshot,
     troubleCodes: readonly TroubleCode[],
     vehicleContext?: string,
+    knowledgeContext?: readonly string[],
   ): Promise<QvacInterpretationResult> {
     if (this.modelId === null) {
       throw new QvacUnavailableError(
@@ -110,6 +109,7 @@ export class QvacSDKDataSource {
       parameters,
       troubleCodes,
       vehicleContext,
+      knowledgeContext,
     );
 
     const history = [
@@ -139,6 +139,7 @@ export class QvacSDKDataSource {
     parameters: ObdParameterSnapshot,
     troubleCodes: readonly TroubleCode[],
     vehicleContext?: string,
+    knowledgeContext?: readonly string[],
   ): string {
     const lines: string[] = [];
 
@@ -165,6 +166,13 @@ export class QvacSDKDataSource {
       }
     } else {
       lines.push('\nNo active DTCs.');
+    }
+
+    if (knowledgeContext && knowledgeContext.length > 0) {
+      lines.push('\nRelevant diagnostic knowledge (retrieved on-device):');
+      for (const snippet of knowledgeContext) {
+        lines.push(`  - ${snippet}`);
+      }
     }
 
     lines.push('\nProvide a brief diagnostic assessment.');
