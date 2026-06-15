@@ -335,7 +335,8 @@ export class ELM327DataSource {
 
     try {
       await this.connect(this.deviceAddress);
-      this.reconnectAttempts = 0;
+      this.reconnectAttempts    = 0;
+      this.consecutiveFailures  = 0; // reset so circuit doesn't open prematurely after reconnect
     } catch {
       // Connect failed — roll back the increment so the next command failure
       // can schedule a new reconnect attempt rather than immediately giving up.

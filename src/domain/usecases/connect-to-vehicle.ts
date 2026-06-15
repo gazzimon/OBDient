@@ -24,12 +24,16 @@ export class ConnectToVehicleUseCase {
   async execute(input: ConnectToVehicleInput): Promise<ConnectToVehicleResult> {
     const vehicle = await this.obdRepo.connect(input.deviceAddress);
 
+    // Attempt VIN read — non-fatal, not all vehicles/adapters support mode 09
+    const vin = await this.obdRepo.readVin();
+
     // Enrich with any user-provided metadata
     const enriched: Vehicle = {
       ...vehicle,
       make: input.make ?? vehicle.make,
       model: input.model ?? vehicle.model,
       year: input.year ?? vehicle.year,
+      vin: vin ?? vehicle.vin,
     };
 
     // Persist the vehicle so it appears in history

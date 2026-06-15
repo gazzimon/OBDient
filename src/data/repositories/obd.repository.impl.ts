@@ -3,6 +3,7 @@
 import { elm327 } from '@/data/datasources/elm327.datasource';
 import { mapRawResponseToObdParameter } from '@/data/mappers/pid.mapper';
 import { mapRawResponseToTroubleCodes } from '@/data/mappers/dtc.mapper';
+import { parseVinResponse } from '@/data/mappers/vin.mapper';
 import { createUnknownVehicle, type OBDProtocol } from '@/domain/entities/vehicle';
 import type { Vehicle } from '@/domain/entities/vehicle';
 import type { ObdParameter } from '@/domain/entities/obd-parameter';
@@ -55,6 +56,15 @@ export class OBDRepositoryImpl implements IOBDRepository {
       }
     }
     return results;
+  }
+
+  async readVin(): Promise<string | null> {
+    try {
+      const raw = await elm327.sendCommand('0902');
+      return parseVinResponse(raw);
+    } catch {
+      return null;
+    }
   }
 
   async readTroubleCodes(): Promise<TroubleCode[]> {

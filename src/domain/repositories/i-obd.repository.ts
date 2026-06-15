@@ -26,6 +26,10 @@ export interface IOBDRepository {
   // Sends mode 04 command to clear all stored DTCs.
   clearTroubleCodes(): Promise<void>;
 
+  // Sends mode 09 PID 02 and returns the decoded 17-char VIN, or null if the
+  // vehicle does not support it or the response cannot be parsed.
+  readVin(): Promise<string | null>;
+
   // Returns true if the Bluetooth connection is currently open.
   isConnected(): boolean;
 }
