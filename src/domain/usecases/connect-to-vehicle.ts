@@ -4,6 +4,7 @@
 import type { IOBDRepository } from '@/domain/repositories/i-obd.repository';
 import type { Vehicle } from '@/domain/entities/vehicle';
 import { upsertVehicle } from '@/data/datasources/storage.datasource';
+import { fetchVehicleInfoByVin } from '@/data/datasources/nhtsa.datasource';
 
 export interface ConnectToVehicleInput {
   deviceAddress: string;
@@ -27,13 +28,16 @@ export class ConnectToVehicleUseCase {
     // Attempt VIN read — non-fatal, not all vehicles/adapters support mode 09
     const vin = await this.obdRepo.readVin();
 
-    // Enrich with any user-provided metadata
+    // If we got a VIN, query NHTSA to resolve make / model / year automatically
+    const nhtsaInfo = vin ? await fetchVehicleInfoByVin(vin) : null;
+
+    // Enrich: explicit input > NHTSA API > adapter-detected > defaults
     const enriched: Vehicle = {
       ...vehicle,
-      make: input.make ?? vehicle.make,
-      model: input.model ?? vehicle.model,
-      year: input.year ?? vehicle.year,
-      vin: vin ?? vehicle.vin,
+      vin:   vin ?? vehicle.vin,
+      make:  input.make  ?? nhtsaInfo?.make  ?? vehicle.make,
+      model: input.model ?? nhtsaInfo?.model ?? vehicle.model,
+      year:  input.year  ?? nhtsaInfo?.year  ?? vehicle.year,
     };
 
     // Persist the vehicle so it appears in history
