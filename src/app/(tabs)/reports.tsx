@@ -90,7 +90,7 @@ export default function ReportsScreen() {
           <View className="items-center py-12">
             <ActivityIndicator color="#2DE1A5" />
           </View>
-        ) : loaded && sessions.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <View className="items-center py-12">
             <View className="w-24 h-24 rounded-full border-2 border-brand-teal items-center justify-center mb-4">
               <MaterialCommunityIcons name="file-document-outline" size={36} color="#2DE1A5" />
@@ -102,7 +102,7 @@ export default function ReportsScreen() {
               Saved diagnostic sessions will{'\n'}appear here
             </Text>
           </View>
-        ) : loaded ? (
+        ) : (
           <FlatList
             data={sessions}
             keyExtractor={(item) => item.id}

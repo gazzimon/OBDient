@@ -20,7 +20,7 @@ import {
   NoDataError,
 } from '@/core/errors/obd.errors';
 
-const COMMAND_TIMEOUT_MS        = 2000;
+const COMMAND_TIMEOUT_MS        = 4000;
 const ATZ_TIMEOUT_MS            = 6000;
 const RECONNECT_INTERVAL_MS     = 5000;
 const MAX_RECONNECT_ATTEMPTS    = 3;
@@ -89,11 +89,17 @@ export class ELM327DataSource {
     }
 
     // Give the BT Classic socket time to stabilize before sending commands
-    await this.delay(1000);
+    // Cheap ELM327 clones can take up to 3s before accepting commands
+    await this.delay(3000);
     await this.runInitSequence();
 
-    // Detect OBD protocol via ATDP (describe protocol)
-    const protocol = await this.sendRaw('ATDP');
+    // Detect OBD protocol via ATDP — non-fatal, some clones don't respond
+    let protocol = 'UNKNOWN';
+    try {
+      protocol = await this.sendRaw('ATDP', ATZ_TIMEOUT_MS);
+    } catch (err) {
+      console.warn('[ELM327] ATDP timed out — protocol unknown, continuing');
+    }
 
     this.startHealthCheck();
     return protocol;
@@ -210,13 +216,17 @@ export class ELM327DataSource {
 
     const fullCommand = `${command}\r`;
 
+    // Register listener BEFORE writing — the adapter can respond in microseconds
+    // and any data arriving before the listener is set up would be lost forever.
+    const responsePromise = this.waitForResponse(command, timeoutMs);
+
     try {
       await this.device.write(fullCommand);
     } catch (err) {
       throw new ConnectionLostError(`Write failed: ${String(err)}`, err);
     }
 
-    return this.waitForResponse(command, timeoutMs);
+    return responsePromise;
   }
 
   // Reads data until '>' prompt or timeout
@@ -283,13 +293,14 @@ export class ELM327DataSource {
         // ATZ resets the adapter — cheap clones can take up to 5s to respond
         await this.sendRaw(cmd, cmd === 'ATZ' ? ATZ_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
         if (cmd === 'ATZ') {
-          await this.delay(500);
+          await this.delay(1500);
         }
       } catch (err) {
-        // ATZ timeout is non-fatal — some clones don't respond but work fine
-        if (err instanceof CommandTimeoutError && cmd === 'ATZ') {
-          console.warn('[ELM327] ATZ timed out — continuing anyway');
-          await this.delay(500);
+        if (err instanceof CommandTimeoutError) {
+          // Some cheap clones don't respond to certain AT commands but work fine.
+          // ATZ, ATL0, ATE0 timeouts are non-fatal — continue the init sequence.
+          console.warn(`[ELM327] ${cmd} timed out — continuing anyway`);
+          if (cmd === 'ATZ') await this.delay(500);
           continue;
         }
         if (!(err instanceof NoDataError)) {
