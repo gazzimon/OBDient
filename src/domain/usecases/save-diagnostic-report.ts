@@ -20,7 +20,7 @@ export class SaveDiagnosticReportUseCase {
     const toSave: DiagnosticSession = {
       ...input.session,
       endedAt: input.session.endedAt ?? new Date(),
-      status: 'completed',
+      status: input.session.status === 'active' ? 'completed' : input.session.status,
       parameters: input.finalParameters ?? input.session.parameters,
       troubleCodes: input.finalTroubleCodes ?? input.session.troubleCodes,
       interpretation: input.interpretation ?? input.session.interpretation,

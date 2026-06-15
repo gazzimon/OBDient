@@ -109,7 +109,11 @@ export async function initializeDatabase(): Promise<void> {
 
 export function insertSession(row: typeof sessionsTable.$inferInsert): Promise<void> {
   return enqueueWrite('insert session', () => {
-    getDb().insert(sessionsTable).values(row).run();
+    getDb()
+      .insert(sessionsTable)
+      .values(row)
+      .onConflictDoUpdate({ target: sessionsTable.id, set: row })
+      .run();
   });
 }
 

@@ -54,8 +54,9 @@ export function CircularGauge({
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    const clamped = Math.min(Math.max((value - min) / (max - min), 0), 1);
-    progress.value = withTiming(clamped, { duration: 400 });
+    const range = max - min;
+    const clamped = range === 0 ? 0 : Math.min(Math.max((value - min) / range, 0), 1);
+    progress.value = withTiming(isNaN(clamped) ? 0 : clamped, { duration: 400 });
   }, [value, min, max, progress]);
 
   const animatedProps = useAnimatedProps(() => ({

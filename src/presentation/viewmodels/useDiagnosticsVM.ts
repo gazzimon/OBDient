@@ -34,9 +34,14 @@ export function useDiagnosticsVM() {
   }, [addTroubleCode, clearTroubleCodes]);
 
   const clearCodes = useCallback(async () => {
-    await container.clearTroubleCodes.execute(true);
-    clearTroubleCodes();
-    setLoadState('idle');
+    try {
+      await container.clearTroubleCodes.execute(true);
+      clearTroubleCodes();
+      setLoadState('idle');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear DTCs');
+      setLoadState('error');
+    }
   }, [clearTroubleCodes]);
 
   return {

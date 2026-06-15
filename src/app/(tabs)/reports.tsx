@@ -2,7 +2,7 @@
 // Each item navigates to the interpretation detail screen.
 
 import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -86,7 +86,11 @@ export default function ReportsScreen() {
       <View className="flex-1 px-4 pt-3">
         <SectionHeader title="Reports" />
 
-        {loaded && sessions.length === 0 ? (
+        {!loaded ? (
+          <View className="items-center py-12">
+            <ActivityIndicator color="#2DE1A5" />
+          </View>
+        ) : loaded && sessions.length === 0 ? (
           <View className="items-center py-12">
             <View className="w-24 h-24 rounded-full border-2 border-brand-teal items-center justify-center mb-4">
               <MaterialCommunityIcons name="file-document-outline" size={36} color="#2DE1A5" />
@@ -98,7 +102,7 @@ export default function ReportsScreen() {
               Saved diagnostic sessions will{'\n'}appear here
             </Text>
           </View>
-        ) : (
+        ) : loaded ? (
           <FlatList
             data={sessions}
             keyExtractor={(item) => item.id}

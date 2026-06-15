@@ -117,7 +117,8 @@ export class QvacDataSource {
     }
 
     const json = (await response.json()) as OpenAIResponse;
-    const text = json.choices[0]?.message.content.trim() ?? '';
+    const text = json.choices[0]?.message?.content?.trim();
+    if (!text) throw new QvacRequestError(response.status, 'QVAC returned empty response');
 
     return { text, generatedAt: new Date() };
   }
