@@ -8,6 +8,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
+import { PermissionsAndroid, Platform } from 'react-native';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -28,6 +29,26 @@ interface BluetoothContextValue {
 }
 
 const BluetoothContext = createContext<BluetoothContextValue | null>(null);
+
+// Android 12+ (API 31) requires BLUETOOTH_CONNECT/SCAN as runtime permissions.
+// Older versions only need the manifest entries (plus location on 10-11).
+async function requestBluetoothPermissions(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+
+  if (Platform.Version >= 31) {
+    const result = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+    ]);
+    return Object.values(result).every((r) => r === PermissionsAndroid.RESULTS.GRANTED);
+  }
+
+  // Android 10-11: Bluetooth Classic discovery needs fine location
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+  );
+  return result === PermissionsAndroid.RESULTS.GRANTED;
+}
 
 export function useBluetoothContext(): BluetoothContextValue {
   const ctx = useContext(BluetoothContext);
@@ -62,6 +83,11 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
     setIsScanning(true);
     setConnectError(null);
     try {
+      const granted = await requestBluetoothPermissions();
+      if (!granted) {
+        setConnectError('Bluetooth permission denied. Enable it in Android app settings.');
+        return;
+      }
       const devices = await RNBluetoothClassic.getBondedDevices();
       setPairedDevices(devices);
     } catch (err) {
@@ -91,6 +117,10 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
   );
 
   const disconnect = useCallback(() => {
+    // Close the physical BT socket first, then update UI state
+    container.obdRepo.disconnect().catch((err) => {
+      console.warn('[BluetoothProvider] disconnect error:', err);
+    });
     endSession('interrupted');
     setDisconnected();
   }, [endSession, setDisconnected]);

@@ -15,6 +15,7 @@ import {
 } from '@/core/errors/obd.errors';
 
 const COMMAND_TIMEOUT_MS = 2000;
+const ATZ_TIMEOUT_MS = 6000;
 const RECONNECT_INTERVAL_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 3;
 const PROMPT_CHAR = '>';
@@ -42,6 +43,8 @@ export class ELM327DataSource {
       throw new ConnectionFailedError(address, err);
     }
 
+    // Give the BT Classic socket time to stabilize before sending commands
+    await this.delay(1000);
     await this.runInitSequence();
 
     // Detect OBD protocol via ATDP (describe protocol)
@@ -79,7 +82,7 @@ export class ELM327DataSource {
   }
 
   // Sends a raw AT/OBD command and waits for the '>' prompt
-  private async sendRaw(command: string): Promise<string> {
+  private async sendRaw(command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<string> {
     if (!this.device) throw new ConnectionLostError('No device connected');
 
     const fullCommand = `${command}\r`;
@@ -90,11 +93,11 @@ export class ELM327DataSource {
       throw new ConnectionLostError(`Write failed: ${String(err)}`, err);
     }
 
-    return this.waitForResponse(command);
+    return this.waitForResponse(command, timeoutMs);
   }
 
   // Reads data until '>' prompt or timeout
-  private async waitForResponse(command: string): Promise<string> {
+  private async waitForResponse(command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let buffer = '';
       let timedOut = false;
@@ -102,8 +105,8 @@ export class ELM327DataSource {
       const timeout = setTimeout(() => {
         timedOut = true;
         cleanup();
-        reject(new CommandTimeoutError(command, COMMAND_TIMEOUT_MS));
-      }, COMMAND_TIMEOUT_MS);
+        reject(new CommandTimeoutError(command, timeoutMs));
+      }, timeoutMs);
 
       const cleanup = () => {
         clearTimeout(timeout);
@@ -153,12 +156,18 @@ export class ELM327DataSource {
   private async runInitSequence(): Promise<void> {
     for (const cmd of INIT_SEQUENCE) {
       try {
-        await this.sendRaw(cmd);
-        // Small delay after ATZ (adapter resets)
+        // ATZ resets the adapter — cheap clones can take up to 5s to respond
+        await this.sendRaw(cmd, cmd === 'ATZ' ? ATZ_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
         if (cmd === 'ATZ') {
           await this.delay(500);
         }
       } catch (err) {
+        // ATZ timeout is non-fatal — some clones don't respond but work fine
+        if (err instanceof CommandTimeoutError && cmd === 'ATZ') {
+          console.warn('[ELM327] ATZ timed out — continuing anyway');
+          await this.delay(500);
+          continue;
+        }
         if (!(err instanceof NoDataError)) {
           throw new AdapterInitError(
             `Init command ${cmd} failed: ${String(err)}`,
