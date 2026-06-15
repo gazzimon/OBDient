@@ -60,7 +60,13 @@ export class ReportRepositoryImpl implements IReportRepository {
       startedAt: new Date(row.startedAt),
       endedAt: row.endedAt ? new Date(row.endedAt) : null,
       status: row.status,
-      parameters: JSON.parse(row.parametersJson) as DiagnosticSession['parameters'],
+      parameters: (() => {
+        try {
+          return JSON.parse(row.parametersJson) as DiagnosticSession['parameters'];
+        } catch {
+          return {} as DiagnosticSession['parameters'];
+        }
+      })(),
       troubleCodes: dtcRows.map(mapRowToTroubleCode),
       interpretation: row.interpretation ?? null,
     };

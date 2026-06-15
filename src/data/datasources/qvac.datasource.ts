@@ -8,10 +8,19 @@ import {
 } from '@/core/errors/obd.errors';
 import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
+import { useSettingsStore } from '@/store/settingsStore';
 
-const BASE_URL = process.env['EXPO_PUBLIC_QVAC_BASE_URL'] ?? 'http://localhost:11434/v1';
-const MODEL = process.env['EXPO_PUBLIC_QVAC_MODEL'] ?? 'qwen2.5:7b';
+const DEFAULT_BASE_URL = process.env['EXPO_PUBLIC_QVAC_BASE_URL'] ?? 'http://localhost:11434/v1';
+const DEFAULT_MODEL = process.env['EXPO_PUBLIC_QVAC_MODEL'] ?? 'qwen2.5:7b';
 const REQUEST_TIMEOUT_MS = 30000;
+
+function getBaseUrl(): string {
+  return useSettingsStore.getState().qvacBaseUrl || DEFAULT_BASE_URL;
+}
+
+function getModel(): string {
+  return useSettingsStore.getState().qvacModel || DEFAULT_MODEL;
+}
 
 const SYSTEM_PROMPT = `You are OBDient, an expert automotive assistant integrated into a car.
 You receive real-time vehicle data via OBD-II.
@@ -52,7 +61,7 @@ export class QvacDataSource {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${BASE_URL}/models`, { signal: controller.signal });
+      const res = await fetch(`${getBaseUrl()}/models`, { signal: controller.signal });
       clearTimeout(timeout);
       return res.ok;
     } catch {
@@ -67,8 +76,9 @@ export class QvacDataSource {
   ): Promise<QvacInterpretationResult> {
     const userMessage = this.buildUserMessage(parameters, troubleCodes, vehicleContext);
 
+    const baseUrl = getBaseUrl();
     const body: OpenAIRequest = {
-      model: MODEL,
+      model: getModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userMessage },
@@ -83,7 +93,7 @@ export class QvacDataSource {
 
     let response: Response;
     try {
-      response = await fetch(`${BASE_URL}/chat/completions`, {
+      response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -95,7 +105,7 @@ export class QvacDataSource {
         throw new QvacTimeoutError('QVAC request timed out after 30s', err);
       }
       throw new QvacUnavailableError(
-        `QVAC server unreachable at ${BASE_URL}`,
+        `QVAC server unreachable at ${baseUrl}`,
         err,
       );
     } finally {
