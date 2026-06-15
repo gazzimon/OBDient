@@ -82,7 +82,13 @@ export class ELM327DataSource {
     this.circuitOpen     = false;
 
     try {
-      this.device = await RNBluetoothClassic.connectToDevice(address);
+      // delimiter '>' matches the ELM327 prompt — the native layer fires
+      // onDataReceived only when it sees this char, so our waitForResponse
+      // receives the full response in one event instead of never (default '\n').
+      this.device = await RNBluetoothClassic.connectToDevice(address, {
+        delimiter: '>',
+        charset:   'ascii',
+      });
       this.connected = true;
     } catch (err) {
       throw new ConnectionFailedError(address, err);
@@ -215,14 +221,17 @@ export class ELM327DataSource {
     if (!this.device) throw new ConnectionLostError('No device connected');
 
     const fullCommand = `${command}\r`;
+    console.log(`[ELM327] >> WRITE: ${JSON.stringify(fullCommand)}`);
 
     // Register listener BEFORE writing — the adapter can respond in microseconds
     // and any data arriving before the listener is set up would be lost forever.
     const responsePromise = this.waitForResponse(command, timeoutMs);
 
     try {
-      await this.device.write(fullCommand);
+      const ok = await this.device.write(fullCommand);
+      console.log(`[ELM327] write() result: ${ok}`);
     } catch (err) {
+      console.error(`[ELM327] write() threw:`, err);
       throw new ConnectionLostError(`Write failed: ${String(err)}`, err);
     }
 
@@ -238,6 +247,7 @@ export class ELM327DataSource {
       const timeout = setTimeout(() => {
         timedOut = true;
         cleanup();
+        console.warn(`[ELM327] TIMEOUT "${command}" — buffer was: ${JSON.stringify(buffer)}`);
         reject(new CommandTimeoutError(command, timeoutMs));
       }, timeoutMs);
 
@@ -249,23 +259,31 @@ export class ELM327DataSource {
       const subscription = this.device?.onDataReceived((data) => {
         if (timedOut) return;
 
-        buffer += data.data ?? '';
+        const chunk = data.data ?? '';
+        console.log(`[ELM327] << DATA (cmd=${command}): ${JSON.stringify(chunk)}`);
+        buffer += chunk;
 
-        if (buffer.includes(PROMPT_CHAR)) {
-          cleanup();
-          const response = buffer
-            .replace(PROMPT_CHAR, '')
-            .replace(command, '') // strip echo (ATE0 may not have taken effect yet)
-            .replace(/\r\n|\r|\n/g, ' ')
-            .trim();
+        // delimiter='>' causes the native layer to strip '>' before firing,
+        // so the event firing = complete response received. Process immediately.
+        if (buffer.length === 0) return;
 
-          if (this.isNoDataResponse(response)) {
-            reject(new NoDataError(command));
-          } else {
-            resolve(response);
-          }
+        cleanup();
+        const response = buffer
+          .replace(PROMPT_CHAR, '')     // in case '>' ever appears in data
+          .replace(command, '')          // strip echo (before ATE0 takes effect)
+          .replace(/\r\n|\r|\n/g, ' ')
+          .trim();
+
+        console.log(`[ELM327] << RESPONSE "${command}": ${JSON.stringify(response)}`);
+
+        if (this.isNoDataResponse(response)) {
+          reject(new NoDataError(command));
+        } else {
+          resolve(response);
         }
       });
+
+      console.log(`[ELM327] listener registered for "${command}": ${!!subscription}`);
 
       if (!subscription) {
         cleanup();

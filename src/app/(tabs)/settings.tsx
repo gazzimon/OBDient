@@ -212,13 +212,82 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* ---------- Connected Vehicle ---------- */}
+        {isConnected && vehicle != null && (
+          <>
+            <SectionHeader title="Connected Vehicle" />
+            <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-6">
+              {vehicle.make !== 'Unknown' && (
+                <SettingsRow>
+                  <Text className="text-brand-muted font-mono text-xs">Make</Text>
+                  <Text className="text-brand-text font-mono text-sm">{vehicle.make}</Text>
+                </SettingsRow>
+              )}
+              {vehicle.model !== 'Unknown' && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">Model</Text>
+                    <Text className="text-brand-text font-mono text-sm">{vehicle.model}</Text>
+                  </SettingsRow>
+                </>
+              )}
+              {vehicle.year != null && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">Year</Text>
+                    <Text className="text-brand-text font-mono text-sm">{vehicle.year}</Text>
+                  </SettingsRow>
+                </>
+              )}
+              {vehicle.manufacturer != null && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">Manufacturer</Text>
+                    <Text className="text-brand-text font-mono text-sm" numberOfLines={1}>{vehicle.manufacturer}</Text>
+                  </SettingsRow>
+                </>
+              )}
+              {vehicle.plantCountry != null && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">Plant</Text>
+                    <Text className="text-brand-text font-mono text-sm">{vehicle.plantCountry}</Text>
+                  </SettingsRow>
+                </>
+              )}
+              {vehicle.protocol !== 'UNKNOWN' && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">Protocol</Text>
+                    <Text className="text-brand-teal font-mono text-xs">{vehicle.protocol}</Text>
+                  </SettingsRow>
+                </>
+              )}
+              {vehicle.vin != null && (
+                <>
+                  <View className="h-px bg-brand-border" />
+                  <SettingsRow>
+                    <Text className="text-brand-muted font-mono text-xs">VIN</Text>
+                    <Text className="text-brand-teal font-mono text-xs tracking-widest">{vehicle.vin}</Text>
+                  </SettingsRow>
+                </>
+              )}
+            </View>
+          </>
+        )}
+
         {/* ---------- About ---------- */}
         <SectionHeader title="About" />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1">
           <SettingsRow>
             <Text className="text-brand-text font-mono text-sm">App version</Text>
-            <Text className="text-brand-teal font-mono text-sm">v0.1.6 (Vincario)</Text>
+            <Text className="text-brand-teal font-mono text-sm">v0.1.7 (VIN UI)</Text>
           </SettingsRow>
         </View>
       </ScrollView>

@@ -104,6 +104,14 @@ export async function initializeDatabase(): Promise<void> {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
     `);
+    // Migrations: ALTER TABLE is a no-op if the column already exists on SQLite
+    // so we catch the error silently — idempotent on fresh installs too.
+    for (const sql of [
+      `ALTER TABLE vehicles ADD COLUMN manufacturer TEXT`,
+      `ALTER TABLE vehicles ADD COLUMN plant_country TEXT`,
+    ]) {
+      try { db.run(sql); } catch { /* column already exists */ }
+    }
   });
 }
 

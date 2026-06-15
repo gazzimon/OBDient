@@ -3,6 +3,7 @@
 import { elm327 } from '@/data/datasources/elm327.datasource';
 import { mapRawResponseToObdParameter } from '@/data/mappers/pid.mapper';
 import { mapRawResponseToTroubleCodes } from '@/data/mappers/dtc.mapper';
+import { PID_DEFINITIONS } from '@/core/constants/pids';
 import { parseVinResponse } from '@/data/mappers/vin.mapper';
 import { createUnknownVehicle, type OBDProtocol } from '@/domain/entities/vehicle';
 import type { Vehicle } from '@/domain/entities/vehicle';
@@ -41,7 +42,8 @@ export class OBDRepositoryImpl implements IOBDRepository {
   }
 
   async readParameter(pidId: PidId): Promise<ObdParameter> {
-    const raw = await elm327.sendCommand(pidId === 'VOLTAGE' ? 'ATRV' : pidId);
+    const command = pidId === 'VOLTAGE' ? 'ATRV' : PID_DEFINITIONS[pidId].command;
+    const raw = await elm327.sendCommand(command);
     return mapRawResponseToObdParameter(pidId, raw);
   }
 
