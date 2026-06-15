@@ -33,6 +33,8 @@ export const vehiclesTable = sqliteTable('vehicles', {
   model: text('model').notNull().default('Unknown'),
   year: int('year'),
   vin: text('vin'),
+  manufacturer: text('manufacturer'),
+  plantCountry: text('plant_country'),
   protocol: text('protocol').notNull().default('UNKNOWN'),
   adapterAddress: text('adapter_address').notNull(),
   lastConnectedAt: int('last_connected_at', { mode: 'timestamp' }).notNull(),

@@ -19,6 +19,8 @@ export interface Vehicle {
   readonly model: string;
   readonly year: number | null;
   readonly vin: string | null;
+  readonly manufacturer: string | null; // full legal name, e.g. "General Motors De Argentina Srl"
+  readonly plantCountry: string | null;
   readonly protocol: OBDProtocol;
   readonly adapterAddress: string;
   readonly connectedAt: Date;
@@ -32,6 +34,8 @@ export function createUnknownVehicle(adapterAddress: string, protocol: OBDProtoc
     model: 'Unknown',
     year: null,
     vin: null,
+    manufacturer: null,
+    plantCountry: null,
     protocol,
     adapterAddress,
     connectedAt: new Date(),

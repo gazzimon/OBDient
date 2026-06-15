@@ -61,6 +61,8 @@ export async function initializeDatabase(): Promise<void> {
         model TEXT NOT NULL DEFAULT 'Unknown',
         year INTEGER,
         vin TEXT,
+        manufacturer TEXT,
+        plant_country TEXT,
         protocol TEXT NOT NULL DEFAULT 'UNKNOWN',
         adapter_address TEXT NOT NULL,
         last_connected_at INTEGER NOT NULL
@@ -187,6 +189,23 @@ export function upsertVehicle(row: typeof vehiclesTable.$inferInsert): Promise<v
       .onConflictDoUpdate({ target: vehiclesTable.id, set: row })
       .run();
   });
+}
+
+// Returns the most recently connected vehicle matching this VIN, or null.
+// Used to avoid consuming Vincario API credits on reconnection.
+export async function getVehicleByVin(vin: string): Promise<typeof vehiclesTable.$inferSelect | null> {
+  try {
+    const rows = getDb()
+      .select()
+      .from(vehiclesTable)
+      .where(eq(vehiclesTable.vin, vin))
+      .orderBy(desc(vehiclesTable.lastConnectedAt))
+      .limit(1)
+      .all();
+    return rows[0] ?? null;
+  } catch (err) {
+    throw new DatabaseError('Failed to fetch vehicle by VIN', err);
+  }
 }
 
 // ─── PID readings ─────────────────────────────────────────────────────────────

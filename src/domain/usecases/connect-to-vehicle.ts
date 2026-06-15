@@ -3,8 +3,8 @@
 
 import type { IOBDRepository } from '@/domain/repositories/i-obd.repository';
 import type { Vehicle } from '@/domain/entities/vehicle';
-import { upsertVehicle } from '@/data/datasources/storage.datasource';
-import { fetchVehicleInfoByVin } from '@/data/datasources/nhtsa.datasource';
+import { upsertVehicle, getVehicleByVin } from '@/data/datasources/storage.datasource';
+import { fetchVehicleInfoByVin } from '@/data/datasources/vincario.datasource';
 
 export interface ConnectToVehicleInput {
   deviceAddress: string;
@@ -28,26 +28,34 @@ export class ConnectToVehicleUseCase {
     // Attempt VIN read — non-fatal, not all vehicles/adapters support mode 09
     const vin = await this.obdRepo.readVin();
 
-    // If we got a VIN, query NHTSA to resolve make / model / year automatically
-    const nhtsaInfo = vin ? await fetchVehicleInfoByVin(vin) : null;
+    // If we got a VIN, check SQLite cache first to avoid consuming Vincario credits
+    // on every reconnection to the same vehicle.
+    const cached = vin ? await getVehicleByVin(vin) : null;
+    const vinInfo = cached?.manufacturer
+      ? { make: cached.make, model: cached.model ?? null, year: cached.year ?? null, manufacturer: cached.manufacturer, plantCountry: cached.plantCountry ?? null }
+      : vin ? await fetchVehicleInfoByVin(vin) : null;
 
-    // Enrich: explicit input > NHTSA API > adapter-detected > defaults
+    // Enrich: explicit input > Vincario API > adapter-detected > defaults
     const enriched: Vehicle = {
       ...vehicle,
-      vin:   vin ?? vehicle.vin,
-      make:  input.make  ?? nhtsaInfo?.make  ?? vehicle.make,
-      model: input.model ?? nhtsaInfo?.model ?? vehicle.model,
-      year:  input.year  ?? nhtsaInfo?.year  ?? vehicle.year,
+      vin:          vin ?? vehicle.vin,
+      make:         input.make  ?? vinInfo?.make         ?? vehicle.make,
+      model:        input.model ?? vinInfo?.model        ?? vehicle.model,
+      year:         input.year  ?? vinInfo?.year         ?? vehicle.year,
+      manufacturer: vinInfo?.manufacturer ?? vehicle.manufacturer,
+      plantCountry: vinInfo?.plantCountry ?? vehicle.plantCountry,
     };
 
     // Persist the vehicle so it appears in history
     await upsertVehicle({
-      id: enriched.id,
-      make: enriched.make,
-      model: enriched.model,
-      year: enriched.year ?? undefined,
-      vin: enriched.vin ?? undefined,
-      protocol: enriched.protocol,
+      id:             enriched.id,
+      make:           enriched.make,
+      model:          enriched.model,
+      year:           enriched.year         ?? undefined,
+      vin:            enriched.vin          ?? undefined,
+      manufacturer:   enriched.manufacturer ?? undefined,
+      plantCountry:   enriched.plantCountry ?? undefined,
+      protocol:       enriched.protocol,
       adapterAddress: enriched.adapterAddress,
       lastConnectedAt: enriched.connectedAt,
     });
