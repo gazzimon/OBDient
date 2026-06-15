@@ -7,7 +7,7 @@
 //   3. Call dispose() when the app goes to background to free RAM (optional).
 //
 // The model is kept in memory between calls for fast response times.
-// On a device with 8GB RAM, qwen2.5:3b needs ~2.5GB — safe to keep loaded.
+// The 4-bit ~1B model needs roughly 1 GB of RAM — safe to keep loaded.
 
 import {
   loadModel,
@@ -27,10 +27,10 @@ export interface QvacInterpretationResult {
   generatedAt: Date;
 }
 
-// Default model — Llama 3.2 1B is the smallest confirmed constant in the SDK.
-// When @qvac/sdk exports a Qwen2.5 3B constant, swap this import:
-//   import { QWEN_2_5_3B_INSTRUCT_Q4 } from '@qvac/sdk';
-// and replace DEFAULT_MODEL below.
+// Default on-device model — Llama 3.2 1B (4-bit), small enough for low-RAM phones.
+// To use a larger/different on-device model, swap this for another SDK model
+// constant (e.g. QWEN3_600M_INST_Q4) or pass a GGUF modelSrc (local path,
+// https URL, or pear:// hyperdrive key for P2P distribution).
 const DEFAULT_MODEL = LLAMA_3_2_1B_INST_Q4_0;
 
 const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
