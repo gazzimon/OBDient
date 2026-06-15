@@ -41,7 +41,14 @@
         {
           "microphonePermission": "Allow OBDient to use the microphone for voice commands."
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": { "minSdkVersion": 29 }
+        }
+      ],
+      "@qvac/sdk/expo-plugin"
     ],
     "experiments": {
       "typedRoutes": true

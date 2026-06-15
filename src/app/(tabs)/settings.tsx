@@ -1,8 +1,8 @@
 // Settings: Bluetooth device pairing/connection, polling interval,
-// QVAC server config, and alert preferences. QVAC grouped-card style.
+// QVAC on-device model status, and alert preferences. QVAC grouped-card style.
 
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Switch, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider';
@@ -11,6 +11,7 @@ import { useOBDStore } from '@/store/obdStore';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
+import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -39,6 +40,22 @@ export default function SettingsScreen() {
   const isConnected = connectionState === 'connected';
 
   const [showDevices, setShowDevices] = useState(false);
+  const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
+  const [modelProgress, setModelProgress] = useState(qvacSDK.getLoadProgress());
+  const [modelLoading, setModelLoading] = useState(false);
+
+  useEffect(() => {
+    setModelLoaded(qvacSDK.isLoaded());
+  }, []);
+
+  const handleLoadModel = () => {
+    if (modelLoading || modelLoaded) return;
+    setModelLoading(true);
+    qvacSDK
+      .initialize((p) => setModelProgress(p))
+      .then(() => { setModelLoaded(true); setModelLoading(false); })
+      .catch(() => { setModelLoading(false); });
+  };
 
   const handleScan = () => {
     setShowDevices(true);
@@ -154,29 +171,45 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* ---------- QVAC server ---------- */}
+        {/* ---------- QVAC on-device model ---------- */}
         <SectionHeader title="QVAC Assistant" />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
-          <Text className="text-brand-muted font-mono text-xs mb-2">Server URL</Text>
-          <TextInput
-            value={vm.qvacBaseUrl}
-            onChangeText={vm.setQvacBaseUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            className="border border-brand-teal rounded-xl px-3 py-2 text-brand-text font-mono text-sm mb-4"
-            placeholderTextColor={MUTED}
-          />
-          <Text className="text-brand-muted font-mono text-xs mb-2">Model</Text>
-          <TextInput
-            value={vm.qvacModel}
-            onChangeText={vm.setQvacModel}
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="border border-brand-teal rounded-xl px-3 py-2 text-brand-text font-mono text-sm"
-            placeholderTextColor={MUTED}
-          />
+          <View className="flex-row items-center justify-between mb-3">
+            <View>
+              <Text className="text-brand-text font-mono text-sm">On-device model</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Llama 3.2 · runs offline · no internet needed
+              </Text>
+            </View>
+            <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>
+              <Text className={`font-mono text-xs ${modelLoaded ? 'text-brand-teal' : 'text-brand-muted'}`}>
+                {modelLoaded ? 'READY' : 'NOT LOADED'}
+              </Text>
+            </View>
+          </View>
+
+          {modelLoading && (
+            <View className="mb-3">
+              <View className="h-1.5 bg-brand-border rounded-full overflow-hidden">
+                <View
+                  className="h-full bg-brand-teal rounded-full"
+                  style={{ width: `${Math.round(modelProgress * 100)}%` }}
+                />
+              </View>
+              <Text className="text-brand-muted font-mono text-xs mt-1 text-right">
+                {Math.round(modelProgress * 100)}%
+              </Text>
+            </View>
+          )}
+
+          {!modelLoaded && (
+            <PillButton
+              label={modelLoading ? 'Loading model…' : 'Load model'}
+              onPress={handleLoadModel}
+              loading={modelLoading}
+            />
+          )}
         </View>
 
         {/* ---------- About ---------- */}

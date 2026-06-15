@@ -1,7 +1,8 @@
-// Implements ILLMRepository using the QVAC datasource.
-// Falls back to rule-based messages if QVAC is unavailable.
+// Implements ILLMRepository using the QVAC on-device SDK.
+// The model runs entirely on the device — no internet required.
+// Falls back to rule-based messages if the model is not loaded yet.
 
-import { qvacDataSource } from '@/data/datasources/qvac.datasource';
+import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { isQvacError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
@@ -10,7 +11,7 @@ import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 export class LLMRepositoryImpl implements ILLMRepository {
   async interpret(request: LLMInterpretationRequest): Promise<LLMInterpretationResult> {
     try {
-      const result = await qvacDataSource.interpret(
+      const result = await qvacSDK.interpret(
         request.parameters,
         request.troubleCodes,
         request.vehicleContext,
@@ -29,10 +30,10 @@ export class LLMRepositoryImpl implements ILLMRepository {
   }
 
   async isAvailable(): Promise<boolean> {
-    return qvacDataSource.isAvailable();
+    return qvacSDK.isLoaded();
   }
 
-  // Rule-based fallback when QVAC is offline
+  // Rule-based fallback when the model is not loaded yet
   private buildFallbackMessage(
     parameters: ObdParameterSnapshot,
     troubleCodes: readonly TroubleCode[],
