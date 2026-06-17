@@ -27,9 +27,11 @@ export function useDiagnosticsVM() {
       result.codes.forEach(addTroubleCode);
       setLastReadAt(result.readAt);
       setLoadState('done');
+      return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read DTCs');
       setLoadState('error');
+      return null;
     }
   }, [addTroubleCode, clearTroubleCodes]);
 

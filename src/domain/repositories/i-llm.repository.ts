@@ -17,10 +17,25 @@ export interface LLMInterpretationResult {
   readonly isAiGenerated: boolean;
 }
 
+export interface ChatTurn {
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+}
+
+export interface LLMChatRequest {
+  // Full back-and-forth so far (not including the system prompt)
+  readonly history: readonly ChatTurn[];
+  // Injected once as the opening context (vehicle + DTCs)
+  readonly systemContext: string;
+}
+
 export interface ILLMRepository {
   // Sends a diagnostic snapshot to QVAC and returns an interpretation.
   // Throws QvacUnavailableError if the server is not reachable.
   interpret(request: LLMInterpretationRequest): Promise<LLMInterpretationResult>;
+
+  // Multi-turn chat — sends full history and returns the next assistant reply.
+  chat(request: LLMChatRequest): Promise<LLMInterpretationResult>;
 
   // Checks if the QVAC server is reachable.
   isAvailable(): Promise<boolean>;

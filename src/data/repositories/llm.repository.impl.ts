@@ -5,7 +5,7 @@
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 import { isQvacError } from '@/core/errors/obd.errors';
-import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult } from '@/domain/repositories/i-llm.repository';
+import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult, LLMChatRequest } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
 import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 
@@ -31,6 +31,22 @@ export class LLMRepositoryImpl implements ILLMRepository {
       if (isQvacError(err)) {
         return {
           text: this.buildFallbackMessage(request.parameters, request.troubleCodes),
+          generatedAt: new Date(),
+          isAiGenerated: false,
+        };
+      }
+      throw err;
+    }
+  }
+
+  async chat(request: LLMChatRequest): Promise<LLMInterpretationResult> {
+    try {
+      const result = await qvacSDK.chat(request.systemContext, request.history);
+      return { ...result, isAiGenerated: true };
+    } catch (err) {
+      if (isQvacError(err)) {
+        return {
+          text: 'QVAC is not available. Load the model in Settings to enable the assistant.',
           generatedAt: new Date(),
           isAiGenerated: false,
         };

@@ -2,6 +2,7 @@
 
 import type { ObdParameterSnapshot } from './obd-parameter';
 import type { TroubleCode } from './trouble-code';
+import type { ChatMessage } from './chat-message';
 
 export type SessionStatus = 'active' | 'completed' | 'interrupted';
 
@@ -13,11 +14,14 @@ export interface DiagnosticSession {
   readonly status: SessionStatus;
   readonly parameters: ObdParameterSnapshot;
   readonly troubleCodes: readonly TroubleCode[];
+  readonly messages: readonly ChatMessage[];
+  // Odometer reading entered manually by the technician
+  readonly mileage: number | null;
   // Full AI-generated interpretation of the session — null if not yet requested
   readonly interpretation: string | null;
 }
 
-export function createSession(vehicleId: string): DiagnosticSession {
+export function createSession(vehicleId: string, mileage: number | null = null): DiagnosticSession {
   return {
     id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     vehicleId,
@@ -26,6 +30,8 @@ export function createSession(vehicleId: string): DiagnosticSession {
     status: 'active',
     parameters: {},
     troubleCodes: [],
+    messages: [],
+    mileage,
     interpretation: null,
   };
 }

@@ -9,6 +9,7 @@ import { ReadRealTimeParametersUseCase } from '@/domain/usecases/read-real-time-
 import { ReadTroubleCodesUseCase } from '@/domain/usecases/read-trouble-codes';
 import { ClearTroubleCodesUseCase } from '@/domain/usecases/clear-trouble-codes';
 import { InterpretWithQVACUseCase } from '@/domain/usecases/interpret-with-qvac';
+import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 const obdRepo = new OBDRepositoryImpl();
@@ -26,6 +27,7 @@ export const container = {
   readTroubleCodes: new ReadTroubleCodesUseCase(obdRepo),
   clearTroubleCodes: new ClearTroubleCodesUseCase(obdRepo),
   interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
+  chatWithQVAC: new ChatWithQVACUseCase(llmRepo),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices
 } as const;

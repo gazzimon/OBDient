@@ -93,6 +93,37 @@ export class QvacSDKDataSource {
     }
   }
 
+  // Multi-turn chat: receives the full conversation history and returns the next reply.
+  // `systemContext` is injected once as the first user turn so QVAC has vehicle + DTC context.
+  async chat(
+    systemContext: string,
+    history: readonly { role: 'user' | 'assistant'; content: string }[],
+  ): Promise<QvacInterpretationResult> {
+    if (this.modelId === null) {
+      throw new QvacUnavailableError('QVAC model is not loaded. Call initialize() first.');
+    }
+
+    const llmHistory = [
+      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'user' as const,   content: systemContext },
+      ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    ];
+
+    let text = '';
+    try {
+      const result = completion({ modelId: this.modelId, history: llmHistory, stream: true });
+      for await (const token of result.tokenStream) {
+        text += token;
+      }
+    } catch (err) {
+      throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) throw new QvacRequestError(0, 'QVAC returned empty response');
+    return { text: trimmed, generatedAt: new Date() };
+  }
+
   async interpret(
     parameters: ObdParameterSnapshot,
     troubleCodes: readonly TroubleCode[],
