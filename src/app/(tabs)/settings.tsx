@@ -17,6 +17,16 @@ import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
 
+// Extracts the most informative message from a QVAC/OBDient load error.
+// QvacUnavailableError wraps the real SDK error (with its numeric code) in `.cause`.
+function describeLoadError(err: unknown): string {
+  const e = err as { code?: unknown; message?: unknown; cause?: { code?: unknown; message?: unknown } };
+  const root = e?.cause ?? e;
+  const code = root?.code ?? e?.code;
+  const msg = root?.message ?? e?.message ?? String(err);
+  return code != null ? `[${String(code)}] ${String(msg)}` : String(msg);
+}
+
 function SettingsRow({ children }: { children: React.ReactNode }) {
   return (
     <View className="flex-row items-center justify-between py-3">
@@ -44,19 +54,40 @@ export default function SettingsScreen() {
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
   const [modelProgress, setModelProgress] = useState(qvacSDK.getLoadProgress());
   const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError]     = useState<string | null>(null);
 
   useEffect(() => {
     setModelLoaded(qvacSDK.isLoaded());
   }, []);
 
-  const handleLoadModel = () => {
+  const handleLoadModel = async () => {
     if (modelLoading || modelLoaded) return;
+    setModelError(null);
     setModelLoading(true);
-    qvacSDK
-      .initialize((p) => setModelProgress(p))
-      .then(() => qvacRag.initialize((p) => setModelProgress(p)))
-      .then(() => { setModelLoaded(true); setModelLoading(false); })
-      .catch(() => { setModelLoading(false); });
+
+    // Stage 1: chat LLM (required).
+    try {
+      await qvacSDK.initialize((p) => setModelProgress(p));
+    } catch (err) {
+      console.error('[QVAC] LLM model load failed:', err);
+      setModelError(`LLM load failed — ${describeLoadError(err)}`);
+      setModelLoading(false);
+      return;
+    }
+
+    // Stage 2: embedding model for RAG (optional — assistant still works without it).
+    try {
+      await qvacRag.initialize((p) => setModelProgress(p));
+    } catch (err) {
+      console.error('[QVAC] RAG/embedding model load failed:', err);
+      setModelError(`RAG embeddings unavailable — ${describeLoadError(err)}`);
+      setModelLoaded(true); // LLM is up; run without retrieval
+      setModelLoading(false);
+      return;
+    }
+
+    setModelLoaded(true);
+    setModelLoading(false);
   };
 
   const handleScan = () => {
@@ -153,7 +184,7 @@ export default function SettingsScreen() {
           <Text className="text-brand-muted font-mono text-xs mb-3">
             Refresh interval
           </Text>
-          <View className="flex-row gap-2">
+          <View className="flex-row gap-2 mb-4">
             {[250, 500, 1000].map((ms) => {
               const active = vm.pollingIntervalMs === ms;
               return (
@@ -166,6 +197,30 @@ export default function SettingsScreen() {
                 >
                   <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
                     {ms} ms
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View className="h-px bg-brand-border mb-4" />
+
+          <Text className="text-brand-muted font-mono text-xs mb-3">
+            Auto-disconnect when engine off (protects battery)
+          </Text>
+          <View className="flex-row gap-2">
+            {([0, 1, 2, 5] as const).map((min) => {
+              const active = vm.engineOffAutoDisconnectMinutes === min;
+              return (
+                <Pressable
+                  key={min}
+                  onPress={() => vm.setEngineOffAutoDisconnectMinutes(min)}
+                  className={`flex-1 py-2 rounded-full items-center ${
+                    active ? 'bg-brand-pill' : 'border border-brand-border'
+                  }`}
+                >
+                  <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
+                    {min === 0 ? 'Off' : `${min}m`}
                   </Text>
                 </Pressable>
               );
@@ -211,6 +266,12 @@ export default function SettingsScreen() {
               onPress={handleLoadModel}
               loading={modelLoading}
             />
+          )}
+
+          {modelError != null && (
+            <Text className="text-brand-red font-mono text-xs mt-3" selectable>
+              {modelError}
+            </Text>
           )}
         </View>
 

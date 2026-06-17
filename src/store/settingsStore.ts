@@ -23,12 +23,15 @@ interface SettingsState {
   unitSystem: UnitSystem;
   alertSoundEnabled: boolean;
   alertVibrationEnabled: boolean;
+  // Auto-disconnect after this many minutes of RPM=0 (0 = disabled). Protects battery.
+  engineOffAutoDisconnectMinutes: number;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
   setUnitSystem: (system: UnitSystem) => void;
   setAlertSoundEnabled: (enabled: boolean) => void;
   setAlertVibrationEnabled: (enabled: boolean) => void;
+  setEngineOffAutoDisconnectMinutes: (minutes: number) => void;
   reset: () => void;
 }
 
@@ -38,6 +41,7 @@ const DEFAULTS = {
   unitSystem: 'metric' as UnitSystem,
   alertSoundEnabled: true,
   alertVibrationEnabled: true,
+  engineOffAutoDisconnectMinutes: 2,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -50,6 +54,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUnitSystem: (system) => set({ unitSystem: system }),
       setAlertSoundEnabled: (enabled) => set({ alertSoundEnabled: enabled }),
       setAlertVibrationEnabled: (enabled) => set({ alertVibrationEnabled: enabled }),
+      setEngineOffAutoDisconnectMinutes: (minutes) => set({ engineOffAutoDisconnectMinutes: minutes }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -63,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()(
         unitSystem: state.unitSystem,
         alertSoundEnabled: state.alertSoundEnabled,
         alertVibrationEnabled: state.alertVibrationEnabled,
+        engineOffAutoDisconnectMinutes: state.engineOffAutoDisconnectMinutes,
       }),
     }
   )

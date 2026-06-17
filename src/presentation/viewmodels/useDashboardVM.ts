@@ -1,5 +1,6 @@
 // Wires real-time OBD polling to the obdStore and fires TriggerAlertUseCase
 // on every parameter update. Stops polling on unmount or disconnection.
+// Auto-disconnects after ENGINE_OFF_TIMEOUT_MS of RPM=0 to prevent battery drain.
 
 import { useEffect, useRef, useCallback } from 'react';
 import { Vibration } from 'react-native';
@@ -9,6 +10,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { container } from '@/data/container';
 import { TriggerAlertUseCase } from '@/domain/usecases/trigger-alert';
 import type { AlertServices } from '@/domain/usecases/trigger-alert';
+
 
 function buildAlertServices(
   soundEnabled: boolean,
@@ -35,12 +37,16 @@ export function useDashboardVM() {
   const setDisconnected = useOBDStore((s) => s.setDisconnected);
   const suppressAlert   = useOBDStore((s) => s.suppressAlert);
 
-  const pollingIntervalMs  = useSettingsStore((s) => s.pollingIntervalMs);
-  const alertSoundEnabled  = useSettingsStore((s) => s.alertSoundEnabled);
-  const alertVibEnabled    = useSettingsStore((s) => s.alertVibrationEnabled);
+  const pollingIntervalMs               = useSettingsStore((s) => s.pollingIntervalMs);
+  const alertSoundEnabled               = useSettingsStore((s) => s.alertSoundEnabled);
+  const alertVibEnabled                 = useSettingsStore((s) => s.alertVibrationEnabled);
+  const engineOffAutoDisconnectMinutes  = useSettingsStore((s) => s.engineOffAutoDisconnectMinutes);
 
   // Stable ref so the onParameter callback always sees current alert settings
   const alertUCRef = useRef<TriggerAlertUseCase | null>(null);
+
+  // Timer tracking how long RPM has been 0 — used to auto-disconnect when engine is off
+  const engineOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     alertUCRef.current = new TriggerAlertUseCase(
@@ -48,9 +54,33 @@ export function useDashboardVM() {
     );
   }, [alertSoundEnabled, alertVibEnabled]);
 
+  const clearEngineOffTimer = useCallback(() => {
+    if (engineOffTimerRef.current !== null) {
+      clearTimeout(engineOffTimerRef.current);
+      engineOffTimerRef.current = null;
+    }
+  }, []);
+
   const onParameter = useCallback(
     (param: Parameters<typeof updateParameter>[0]) => {
       updateParameter(param);
+
+      // Battery drain guard: if RPM drops to 0, start a countdown to auto-disconnect.
+      // If RPM rises again (engine started), cancel the countdown.
+      if (param.pid === 'RPM') {
+        const timeoutMs = engineOffAutoDisconnectMinutes * 60 * 1000;
+        if (param.value === 0 && timeoutMs > 0) {
+          if (engineOffTimerRef.current === null) {
+            engineOffTimerRef.current = setTimeout(() => {
+              console.warn('[Dashboard] Engine off timeout — disconnecting to protect battery');
+              container.readRealTimeParameters.stop();
+              setDisconnected();
+            }, timeoutMs);
+          }
+        } else {
+          clearEngineOffTimer();
+        }
+      }
 
       const uc = alertUCRef.current;
       if (uc == null) return;
@@ -61,7 +91,7 @@ export function useDashboardVM() {
         suppressAlert(result.alertKey);
       }
     },
-    [updateParameter, suppressAlert],
+    [updateParameter, suppressAlert, setDisconnected, clearEngineOffTimer, engineOffAutoDisconnectMinutes],
   );
 
   useEffect(() => {
@@ -74,8 +104,11 @@ export function useDashboardVM() {
       onConnectionLost: setDisconnected,
     });
 
-    return () => container.readRealTimeParameters.stop();
-  }, [connectionState, pollingIntervalMs, onParameter, setDisconnected]);
+    return () => {
+      container.readRealTimeParameters.stop();
+      clearEngineOffTimer();
+    };
+  }, [connectionState, pollingIntervalMs, onParameter, setDisconnected, clearEngineOffTimer]);
 
   return {
     connectionState,
