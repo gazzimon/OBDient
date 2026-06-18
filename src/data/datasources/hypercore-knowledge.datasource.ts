@@ -21,6 +21,7 @@ import Hypercore from 'hypercore';
 import Hyperswarm from 'hyperswarm';
 import b4a from 'b4a';
 import * as FileSystem from 'expo-file-system';
+import { shimiTree } from '@/data/knowledge/shimi-tree';
 
 export interface KnowledgeChunk {
   id: string;
@@ -183,7 +184,11 @@ export class HypercoreKnowledgeSource {
           ),
         );
         const chunk: KnowledgeChunk = JSON.parse(b4a.toString(buf, 'utf8'));
-        if (chunk && chunk.content) this.chunks.push(chunk);
+        if (chunk && chunk.content) {
+          this.chunks.push(chunk);
+          // Update SHIMI confidence weight for the matching concept node
+          shimiTree.applyChunk(chunk);
+        }
       } catch {
         // Skip malformed chunks.
       }

@@ -3,7 +3,7 @@
 // Falls back to rule-based messages if the model is not loaded yet.
 
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
-import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
+import { shimiDataSource } from '@/data/datasources/shimi.datasource';
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
 import { retrievalContext } from '@/data/knowledge/obd-ontology';
 import { isQvacError } from '@/core/errors/obd.errors';
@@ -20,18 +20,17 @@ export class LLMRepositoryImpl implements ILLMRepository {
         request.parameters,
         request.troubleCodes,
       );
-      // SKOS-expanded query: include concept labels from the ontology hierarchy
-      // so the embedder retrieves docs from related branches (e.g. P0300 misfire
-      // also pulls in fuel system and emissions context).
+      // SKOS-expanded query for the embedding layer.
       const primaryDtcId = request.troubleCodes[0]?.code;
       const ontologyExpansion = retrievalContext(primaryDtcId ?? '')
         .map((c) => c.label)
         .join('; ');
       const expandedQuery = ontologyExpansion ? `${query}; ${ontologyExpansion}` : query;
 
-      const localSnippets = await qvacRag.search(expandedQuery, 5);
+      // SHIMI retrieval: hierarchical (confidence-ranked) + QVAC RAG hybrid.
+      const localSnippets = await shimiDataSource.search(primaryDtcId, expandedQuery, 6);
 
-      // Enrich with distributed knowledge from Hypercore peers (opt-in, graceful degradation).
+      // Distributed knowledge from Hypercore peers (opt-in, graceful degradation).
       const remoteSnippets = hypercoreKnowledge
         .getChunks(primaryDtcId)
         .slice(0, 3)
