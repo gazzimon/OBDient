@@ -5,16 +5,19 @@
 // This is the corpus indexed into the QVAC RAG vector store at first launch.
 // To extend the knowledge, add entries and bump KNOWLEDGE_VERSION.
 
-export const KNOWLEDGE_VERSION = 1;
+export const KNOWLEDGE_VERSION = 2;
 
 export interface KnowledgeDoc {
   readonly id: string;
   readonly content: string;
+  // SKOS concept this document belongs to (canonical node in obd-ontology.ts)
+  readonly conceptId: string;
 }
 
 export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   {
     id: 'P0300',
+    conceptId: 'misfire_random',
     content:
       'DTC P0300 — Random/Multiple Cylinder Misfire Detected. The engine is ' +
       'misfiring on more than one cylinder. Common causes: worn spark plugs or ' +
@@ -25,6 +28,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0301-P0308',
+    conceptId: 'misfire_cylinder',
     content:
       'DTC P0301 through P0308 — Cylinder-specific misfire (the last digit is the ' +
       'cylinder number, e.g. P0304 = cylinder 4). Causes: faulty spark plug or ' +
@@ -33,6 +37,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0171-P0174',
+    conceptId: 'fuel_lean',
     content:
       'DTC P0171/P0174 — System Too Lean (Bank 1/Bank 2). Too much air or too ' +
       'little fuel. Causes: vacuum/intake leaks, dirty MAF sensor, weak fuel pump, ' +
@@ -41,6 +46,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0172-P0175',
+    conceptId: 'fuel_rich',
     content:
       'DTC P0172/P0175 — System Too Rich (Bank 1/Bank 2). Too much fuel. Causes: ' +
       'leaking injectors, high fuel pressure, dirty MAF, or a faulty coolant temp ' +
@@ -48,6 +54,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0420-P0430',
+    conceptId: 'catalyst',
     content:
       'DTC P0420/P0430 — Catalyst System Efficiency Below Threshold (Bank 1/Bank ' +
       '2). The catalytic converter is not working efficiently. Causes: aged ' +
@@ -57,6 +64,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0128',
+    conceptId: 'sensor_temperature',
     content:
       'DTC P0128 — Coolant Thermostat below regulating temperature. The engine is ' +
       'not reaching normal operating temperature. Cause: stuck-open thermostat. ' +
@@ -64,6 +72,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0442-P0455',
+    conceptId: 'evap',
     content:
       'DTC P0442/P0455 — EVAP System Leak Detected (small/large). A leak in the ' +
       'evaporative emissions system. Most common cause: a loose, damaged, or ' +
@@ -72,6 +81,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0401',
+    conceptId: 'egr',
     content:
       'DTC P0401 — Exhaust Gas Recirculation (EGR) Flow Insufficient. Causes: ' +
       'clogged EGR passages, stuck EGR valve, or a faulty DPFE sensor. Action: ' +
@@ -79,6 +89,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0113-P0118',
+    conceptId: 'sensor_temperature',
     content:
       'DTC P0113 (Intake Air Temp) / P0118 (Engine Coolant Temp) — sensor circuit ' +
       'high input. A temperature sensor is reading out of range. Causes: failed ' +
@@ -87,6 +98,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0500',
+    conceptId: 'sensor_speed',
     content:
       'DTC P0500 — Vehicle Speed Sensor (VSS) malfunction. Causes: faulty speed ' +
       'sensor, damaged wiring, or a bad connection. Action: inspect the VSS and ' +
@@ -94,6 +106,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'P0700',
+    conceptId: 'transmission',
     content:
       'DTC P0700 — Transmission Control System malfunction. This is a generic code ' +
       'indicating the transmission control module has stored a fault; read the ' +
@@ -102,6 +115,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'dtc-prefixes',
+    conceptId: 'powertrain',
     content:
       'OBD-II DTC prefixes: P = Powertrain (engine/transmission), B = Body, C = ' +
       'Chassis, U = Network/communication. The second character 0 means a generic ' +
@@ -110,6 +124,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'cond-overheat',
+    conceptId: 'live_overheat',
     content:
       'Live condition — High coolant temperature (overheating). Coolant above ' +
       'about 105-110 C is dangerous. Causes: low coolant, failed water pump, ' +
@@ -119,6 +134,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'cond-voltage',
+    conceptId: 'live_voltage',
     content:
       'Live condition — Low battery/system voltage. With the engine running, ' +
       'charging voltage should be roughly 13.5-14.5 V. Below ~12.5 V running ' +
@@ -127,6 +143,7 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
   },
   {
     id: 'cond-rpm',
+    conceptId: 'live_rpm',
     content:
       'Live condition — Very high engine RPM. Sustained high RPM increases wear ' +
       'and heat. If RPM is high at idle, suspect a vacuum leak or idle air ' +

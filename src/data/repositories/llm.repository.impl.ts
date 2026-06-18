@@ -4,7 +4,8 @@
 
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
-import { hypercoreKnowledge, MIN_CONFIRMATIONS } from '@/data/datasources/hypercore-knowledge.datasource';
+import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
+import { retrievalContext } from '@/data/knowledge/obd-ontology';
 import { isQvacError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult, LLMChatRequest } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
@@ -19,12 +20,20 @@ export class LLMRepositoryImpl implements ILLMRepository {
         request.parameters,
         request.troubleCodes,
       );
-      const localSnippets = await qvacRag.search(query, 4);
+      // SKOS-expanded query: include concept labels from the ontology hierarchy
+      // so the embedder retrieves docs from related branches (e.g. P0300 misfire
+      // also pulls in fuel system and emissions context).
+      const primaryDtcId = request.troubleCodes[0]?.code;
+      const ontologyExpansion = retrievalContext(primaryDtcId ?? '')
+        .map((c) => c.label)
+        .join('; ');
+      const expandedQuery = ontologyExpansion ? `${query}; ${ontologyExpansion}` : query;
+
+      const localSnippets = await qvacRag.search(expandedQuery, 5);
 
       // Enrich with distributed knowledge from Hypercore peers (opt-in, graceful degradation).
-      const primaryDtc = request.troubleCodes[0]?.code;
       const remoteSnippets = hypercoreKnowledge
-        .getChunks(primaryDtc)
+        .getChunks(primaryDtcId)
         .slice(0, 3)
         .map((c) => c.content);
 
