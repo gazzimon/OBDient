@@ -16,6 +16,9 @@
 //   3. contribute(chunk) — append an anonymous chunk to the local feed.
 //   4. peerCount() — how many peers are currently connected.
 //   5. dispose() — leave swarm and close all feeds.
+//
+// NOTE: Hypercore v11 is fully async/await — no callback-based ready(),
+// append(), get(), update(), or close(). All methods return Promises.
 
 import Hypercore from 'hypercore';
 import Hyperswarm from 'hyperswarm';
@@ -42,16 +45,17 @@ export class HypercoreKnowledgeSource {
   private swarm: InstanceType<typeof Hyperswarm> | null = null;
   private localFeed: InstanceType<typeof Hypercore> | null = null;
   private remoteFeeds: InstanceType<typeof Hypercore>[] = [];
+  private remoteFeedPaths: string[] = [];
   private chunks: FactChunk[] = [];
   private patterns: PatternChunk[] = [];
-  private ready = false;
-  // Maps remoteFeed index → peerId (sha256-hex of the peer's public key)
+  private _ready = false;
+  // Maps remoteFeed index → peerId (first 16 hex chars of remote public key)
   private feedPeerIds: Map<number, string> = new Map();
   private feedIndex = 0;
 
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
     if (!opts.enabled) return;
-    if (this.ready) return;
+    if (this._ready) return;
 
     const dir =
       opts.storagePath ??
@@ -59,9 +63,7 @@ export class HypercoreKnowledgeSource {
 
     // Open (or create) the local writer feed.
     this.localFeed = new Hypercore(`${dir}/local`);
-    await new Promise<void>((resolve, reject) =>
-      this.localFeed!.ready((err: Error | null) => (err ? reject(err) : resolve())),
-    );
+    await this.localFeed.ready();
 
     // Load existing local chunks into memory.
     await this._loadFeed(this.localFeed);
@@ -71,14 +73,14 @@ export class HypercoreKnowledgeSource {
     this.swarm.join(SWARM_TOPIC, { server: true, client: true });
 
     this.swarm.on('connection', (socket: NodeJS.ReadWriteStream) => {
-      this._onPeer(socket);
+      void this._onPeer(socket);
     });
 
-    this.ready = true;
+    this._ready = true;
   }
 
   isReady(): boolean {
-    return this.ready;
+    return this._ready;
   }
 
   peerCount(): number {
@@ -104,34 +106,39 @@ export class HypercoreKnowledgeSource {
   async contribute(chunk: FactChunk): Promise<void> {
     if (this.localFeed == null) return;
     const buf = b4a.from(JSON.stringify(chunk), 'utf8');
-    await new Promise<void>((resolve, reject) =>
-      this.localFeed!.append(buf, (err: Error | null) =>
-        err ? reject(err) : resolve(),
-      ),
-    );
+    await this.localFeed.append(buf);
     // Add to in-memory cache immediately.
     this.chunks.push(chunk);
   }
 
   async dispose(): Promise<void> {
     await this.swarm?.destroy();
-    await new Promise<void>((r) => this.localFeed?.close(r));
+    if (this.localFeed) await this.localFeed.close();
     for (const feed of this.remoteFeeds) {
-      await new Promise<void>((r) => feed.close(r));
+      await feed.close();
+    }
+    // Remove temporary remote feed directories.
+    for (const p of this.remoteFeedPaths) {
+      try {
+        await FileSystem.deleteAsync(p, { idempotent: true });
+      } catch {
+        // Best-effort cleanup — ignore errors.
+      }
     }
     this.swarm = null;
     this.localFeed = null;
     this.remoteFeeds = [];
+    this.remoteFeedPaths = [];
     this.chunks = [];
     this.patterns = [];
     this.feedPeerIds.clear();
     this.feedIndex = 0;
-    this.ready = false;
+    this._ready = false;
   }
 
   // --- Private ---
 
-  private _onPeer(socket: NodeJS.ReadWriteStream & { remotePublicKey?: Buffer }): void {
+  private async _onPeer(socket: NodeJS.ReadWriteStream & { remotePublicKey?: Buffer }): Promise<void> {
     // Derive a stable peerId from the remote public key (no raw key stored).
     const peerId = socket.remotePublicKey
       ? b4a.toString(socket.remotePublicKey, 'hex').slice(0, 16)
@@ -145,37 +152,21 @@ export class HypercoreKnowledgeSource {
       stream.pipe(socket as any).pipe(stream);
     }
 
+    // Remote feed stored in a per-peer subdirectory under the cache directory.
+    const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
+    const remotePath = `${cacheDir}hc-remote-${peerId}-${this.feedIndex}`;
+    this.remoteFeedPaths.push(remotePath);
+
     const idx = this.feedIndex++;
-    const remoteFeed = new Hypercore(
-      () => {
-        // In-memory storage for remote feeds (no disk persistence).
-        const store: Record<string, Buffer> = {};
-        return {
-          read: (key: string, cb: (err: Error | null, buf?: Buffer) => void) =>
-            cb(null, store[key]),
-          write: (key: string, value: Buffer, cb: (err: Error | null) => void) => {
-            store[key] = value;
-            cb(null);
-          },
-          del: (key: string, cb: (err: Error | null) => void) => {
-            delete store[key];
-            cb(null);
-          },
-          list: (cb: (err: Error | null, list?: string[]) => void) =>
-            cb(null, Object.keys(store)),
-        };
-      },
-    );
+    const remoteFeed = new Hypercore(remotePath);
+    await remoteFeed.ready();
 
-    remoteFeed.ready((err: Error | null) => {
-      if (err) return;
-      this.remoteFeeds.push(remoteFeed);
-      this.feedPeerIds.set(idx, peerId);
-      this._loadFeed(remoteFeed, peerId);
+    this.remoteFeeds.push(remoteFeed);
+    this.feedPeerIds.set(idx, peerId);
+    void this._loadFeed(remoteFeed, peerId);
 
-      const remoteStream = remoteFeed.replicate(false);
-      remoteStream.pipe(socket as any).pipe(remoteStream);
-    });
+    const remoteStream = remoteFeed.replicate(false);
+    remoteStream.pipe(socket as any).pipe(remoteStream);
   }
 
   private _dispatch(chunk: DistributedChunk, peerId: string): void {
@@ -217,20 +208,12 @@ export class HypercoreKnowledgeSource {
   }
 
   private async _loadFeed(feed: InstanceType<typeof Hypercore>, peerId = 'local'): Promise<void> {
-    const length: number = await new Promise((resolve, reject) =>
-      feed.update({ ifAvailable: true }, (err: Error | null) => {
-        if (err) return resolve(0);
-        resolve(feed.length);
-      }),
-    );
+    await feed.update({ ifAvailable: true });
+    const length: number = feed.length;
 
     for (let i = 0; i < length; i++) {
       try {
-        const buf: Buffer = await new Promise((resolve, reject) =>
-          feed.get(i, (err: Error | null, data: Buffer) =>
-            err ? reject(err) : resolve(data),
-          ),
-        );
+        const buf: Buffer = await feed.get(i);
         const chunk: DistributedChunk = JSON.parse(b4a.toString(buf, 'utf8'));
         this._dispatch(chunk, peerId);
       } catch {
