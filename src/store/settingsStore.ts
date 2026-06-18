@@ -28,6 +28,10 @@ interface SettingsState {
   // Custom GGUF model source: HTTPS URL, local file path, or pear:// key.
   // If null, uses the default SDK bundled model.
   customModelSrc: string | null;
+  // Distributed RAG via Hypercore: join the peer network to receive remote knowledge.
+  knowledgeNetworkEnabled: boolean;
+  // Opt-in to contribute anonymous diagnostic chunks to the shared feed.
+  contributeKnowledge: boolean;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -36,6 +40,8 @@ interface SettingsState {
   setAlertVibrationEnabled: (enabled: boolean) => void;
   setEngineOffAutoDisconnectMinutes: (minutes: number) => void;
   setCustomModelSrc: (src: string | null) => void;
+  setKnowledgeNetworkEnabled: (enabled: boolean) => void;
+  setContributeKnowledge: (enabled: boolean) => void;
   reset: () => void;
 }
 
@@ -47,6 +53,8 @@ const DEFAULTS = {
   alertVibrationEnabled: true,
   engineOffAutoDisconnectMinutes: 2,
   customModelSrc: null as string | null,
+  knowledgeNetworkEnabled: false,
+  contributeKnowledge: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -61,6 +69,8 @@ export const useSettingsStore = create<SettingsState>()(
       setAlertVibrationEnabled: (enabled) => set({ alertVibrationEnabled: enabled }),
       setEngineOffAutoDisconnectMinutes: (minutes) => set({ engineOffAutoDisconnectMinutes: minutes }),
       setCustomModelSrc: (src) => set({ customModelSrc: src }),
+      setKnowledgeNetworkEnabled: (enabled) => set({ knowledgeNetworkEnabled: enabled }),
+      setContributeKnowledge: (enabled) => set({ contributeKnowledge: enabled }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -76,6 +86,8 @@ export const useSettingsStore = create<SettingsState>()(
         alertVibrationEnabled: state.alertVibrationEnabled,
         engineOffAutoDisconnectMinutes: state.engineOffAutoDisconnectMinutes,
         customModelSrc: state.customModelSrc,
+        knowledgeNetworkEnabled: state.knowledgeNetworkEnabled,
+        contributeKnowledge: state.contributeKnowledge,
       }),
     }
   )
