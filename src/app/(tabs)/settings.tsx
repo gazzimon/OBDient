@@ -2,12 +2,13 @@
 // QVAC on-device model status, and alert preferences. QVAC grouped-card style.
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
+import { View, Text, ScrollView, Switch, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider';
 import { useSettingsVM } from '@/presentation/viewmodels/useSettingsVM';
 import { useOBDStore } from '@/store/obdStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
@@ -49,6 +50,10 @@ export default function SettingsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
+  const customModelSrc    = useSettingsStore((s) => s.customModelSrc);
+  const setCustomModelSrc = useSettingsStore((s) => s.setCustomModelSrc);
+  const [modelUrlInput, setModelUrlInput] = useState(customModelSrc ?? '');
+
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
   const [modelProgress, setModelProgress] = useState(qvacSDK.getLoadProgress());
@@ -66,7 +71,7 @@ export default function SettingsScreen() {
 
     // Stage 1: chat LLM (required).
     try {
-      await qvacSDK.initialize((p) => setModelProgress(p));
+      await qvacSDK.initialize((p) => setModelProgress(p), customModelSrc);
     } catch (err) {
       console.error('[QVAC] LLM model load failed:', err);
       setModelError(`LLM load failed — ${describeLoadError(err)}`);
@@ -108,7 +113,7 @@ export default function SettingsScreen() {
           <SettingsRow>
             <ConnectionStatus
               state={connectionState}
-              deviceName={vehicle != null ? `${vehicle.make} · ${vehicle.protocol}` : null}
+              deviceName={null}
             />
           </SettingsRow>
 
@@ -235,7 +240,7 @@ export default function SettingsScreen() {
             <View>
               <Text className="text-brand-text font-mono text-sm">On-device model</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Llama 3.2 + on-device RAG · runs offline
+                {customModelSrc ? 'Fine-tuned model · runs offline' : 'Llama 3.2 + on-device RAG · runs offline'}
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>
@@ -244,6 +249,24 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Custom fine-tuned model URL */}
+          <Text className="text-brand-muted font-mono text-xs mb-1.5">
+            Custom model (HTTPS URL, local path, or pear:// key)
+          </Text>
+          <TextInput
+            value={modelUrlInput}
+            onChangeText={setModelUrlInput}
+            onEndEditing={() => {
+              const trimmed = modelUrlInput.trim();
+              setCustomModelSrc(trimmed || null);
+            }}
+            placeholder="Leave empty to use default Llama 3.2 1B"
+            placeholderTextColor="#9A9A9A"
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-brand-text font-mono text-xs mb-3"
+          />
 
           {modelLoading && (
             <View className="mb-3">
@@ -259,11 +282,22 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {!modelLoaded && (
+          {!modelLoaded ? (
             <PillButton
               label={modelLoading ? 'Loading model…' : 'Load model'}
               onPress={handleLoadModel}
               loading={modelLoading}
+            />
+          ) : (
+            <PillButton
+              label="Unload & reload"
+              onPress={async () => {
+                await qvacSDK.dispose();
+                setModelLoaded(false);
+                setModelProgress(0);
+                setModelError(null);
+              }}
+              variant="destructive"
             />
           )}
 

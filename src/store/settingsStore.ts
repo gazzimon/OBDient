@@ -25,6 +25,9 @@ interface SettingsState {
   alertVibrationEnabled: boolean;
   // Auto-disconnect after this many minutes of RPM=0 (0 = disabled). Protects battery.
   engineOffAutoDisconnectMinutes: number;
+  // Custom GGUF model source: HTTPS URL, local file path, or pear:// key.
+  // If null, uses the default SDK bundled model.
+  customModelSrc: string | null;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -32,6 +35,7 @@ interface SettingsState {
   setAlertSoundEnabled: (enabled: boolean) => void;
   setAlertVibrationEnabled: (enabled: boolean) => void;
   setEngineOffAutoDisconnectMinutes: (minutes: number) => void;
+  setCustomModelSrc: (src: string | null) => void;
   reset: () => void;
 }
 
@@ -42,6 +46,7 @@ const DEFAULTS = {
   alertSoundEnabled: true,
   alertVibrationEnabled: true,
   engineOffAutoDisconnectMinutes: 2,
+  customModelSrc: null as string | null,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -55,6 +60,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAlertSoundEnabled: (enabled) => set({ alertSoundEnabled: enabled }),
       setAlertVibrationEnabled: (enabled) => set({ alertVibrationEnabled: enabled }),
       setEngineOffAutoDisconnectMinutes: (minutes) => set({ engineOffAutoDisconnectMinutes: minutes }),
+      setCustomModelSrc: (src) => set({ customModelSrc: src }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -69,6 +75,7 @@ export const useSettingsStore = create<SettingsState>()(
         alertSoundEnabled: state.alertSoundEnabled,
         alertVibrationEnabled: state.alertVibrationEnabled,
         engineOffAutoDisconnectMinutes: state.engineOffAutoDisconnectMinutes,
+        customModelSrc: state.customModelSrc,
       }),
     }
   )

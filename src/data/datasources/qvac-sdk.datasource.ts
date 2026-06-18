@@ -50,15 +50,20 @@ export class QvacSDKDataSource {
 
   // Download and load the model into memory.
   // Safe to call multiple times — only loads once.
+  // Pass a custom `modelSrc` (HTTPS URL, local path, or pear:// key) to use a fine-tuned GGUF
+  // instead of the default bundled model.
   async initialize(
     onProgress?: (progress: number) => void,
+    customModelSrc?: string | null,
   ): Promise<void> {
     if (this.modelId !== null) return;
     if (this.loadingPromise !== null) return this.loadingPromise;
 
+    const modelSrc = (customModelSrc ?? '').trim() || DEFAULT_MODEL;
+
     this.loadingPromise = (async () => {
       try {
-        this.modelId = await loadModel({ modelSrc: DEFAULT_MODEL });
+        this.modelId = await loadModel({ modelSrc });
         this.loadProgress = 1;
         onProgress?.(1);
       } catch (err) {
