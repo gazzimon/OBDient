@@ -99,6 +99,55 @@ Key files:
 | `src/data/datasources/knowledge-extractor.ts` | Distils a closed session into an anonymous `KnowledgeChunk` |
 | `src/data/repositories/llm.repository.impl.ts` | Fuses local + remote snippets before every `interpret()` call |
 
+### P2P on device — current state and roadmap
+
+Hypercore and Hyperswarm depend on Node.js built-ins (`net`, `dgram`, `fs`, `crypto`)
+that do not exist in the Hermes / React Native JS runtime. In the current APK, Metro
+redirects both packages to no-op stubs at bundle time (`stubs/hypercore.js`,
+`stubs/hyperswarm.js`), so the app builds and runs cleanly. Everything except actual
+P2P networking is fully functional:
+
+| Layer | Status in APK |
+|---|---|
+| SHIMI confidence tree (MMKV) | ✅ works |
+| SKOS ontology navigation | ✅ works |
+| Trust registry (MMKV) | ✅ works |
+| Pattern evaluator | ✅ works |
+| Local QVAC RAG | ✅ works |
+| Hypercore local feed (disk) | 🔲 stubbed |
+| Hyperswarm P2P discovery | 🔲 stubbed |
+
+To enable real P2P in a production APK there are two paths:
+
+**Option A — Expo native module (recommended)**
+Write a Kotlin/Swift `ExpoModule` that runs Hyperswarm in a background thread and
+exposes an event-emitter bridge to JS. The SHIMI tree and all JS-side logic stay
+unchanged; only the chunk source changes from in-process to cross-thread.
+
+```
+[Hermes / JS thread]           [Kotlin background thread]
+  hypercoreKnowledge   ←────   HypercoreExpoModule
+  (thin JS wrapper)   events   Hyperswarm DHT  ←→  WiFi/LTE
+  shimiTree.applyChunk()       hypercore local feed (disk)
+```
+
+Scaffolding: `npx create-expo-module hypercore-native`. Estimated effort: 1–2 sprints.
+
+**Option B — nodejs-mobile-react-native**
+Embed a full Node.js runtime inside the APK using
+[nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native).
+The existing `hypercore-knowledge.datasource.ts` code runs almost unchanged inside
+the Node process; a lightweight message bridge replaces the Metro stubs.
+
+```
+[Hermes / JS thread]           [Embedded Node.js process]
+  thin bridge wrapper  ←────   hypercore-knowledge.datasource.ts
+  (same JS interface)  IPC     (current code, unmodified)
+```
+
+Trade-off: APK size increases ~30 MB (embedded Node runtime). Requires switching to
+Bare workflow (incompatible with Expo Go managed builds).
+
 ---
 
 ## Diagnostic chat
@@ -234,13 +283,14 @@ There is **no** AI/model/base-URL variable: inference is on-device by design.
 
 ## Scripts
 
-| Command               | Description                           |
-|-----------------------|---------------------------------------|
-| `npm run android`     | Build + run the dev client on Android |
-| `npm start`           | Start the Metro bundler               |
-| `npm test`            | Run the Jest test suite               |
-| `npm run db:generate` | Generate Drizzle SQLite migrations    |
-| `npm run db:studio`   | Open Drizzle Studio                   |
+| Command               | Description                                        |
+|-----------------------|----------------------------------------------------|
+| `npm run android`     | Build + run the dev client on Android              |
+| `npm start`           | Start the Metro bundler                            |
+| `npm test`            | Run the Jest test suite                            |
+| `npm run db:generate` | Generate Drizzle SQLite migrations                 |
+| `npm run db:studio`   | Open Drizzle Studio                                |
+| `node scripts/test-hypercore-local.js` | Hypercore v11 smoke test (Node only, no device needed) |
 
 ---
 
