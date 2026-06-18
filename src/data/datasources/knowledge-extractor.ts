@@ -8,7 +8,7 @@
 // otherwise there is nothing diagnostically interesting to share.
 
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
-import type { KnowledgeChunk } from './hypercore-knowledge.datasource';
+import type { FactChunk } from '@/data/knowledge/distributed-chunk';
 import { hypercoreKnowledge } from './hypercore-knowledge.datasource';
 
 function generateId(): string {
@@ -47,7 +47,8 @@ export async function extractAndContribute(
   const content = buildContent(session);
   if (!content.trim()) return;
 
-  const chunk: KnowledgeChunk = {
+  const chunk: FactChunk = {
+    type: 'fact',
     id: generateId(),
     dtc: primaryDtc.code,
     content,

@@ -22,20 +22,14 @@ import Hyperswarm from 'hyperswarm';
 import b4a from 'b4a';
 import * as FileSystem from 'expo-file-system';
 import { shimiTree } from '@/data/knowledge/shimi-tree';
+import type { DistributedChunk, FactChunk, PatternChunk, SkosPatch } from '@/data/knowledge/distributed-chunk';
+import { isFactChunk, isPatternChunk, isSkosPatch, QUORUM } from '@/data/knowledge/distributed-chunk';
 
-export interface KnowledgeChunk {
-  id: string;
-  dtc?: string;
-  make?: string;
-  yearRange?: [number, number];
-  content: string;
-  confidence: number;
-  confirmations: number;
-  createdAt: string;
-}
-
-// Minimum peer confirmations before a remote chunk is used in RAG context.
-export const MIN_CONFIRMATIONS = 3;
+// Re-export FactChunk as KnowledgeChunk for backwards compatibility with
+// knowledge-extractor.ts and sessionStore.ts.
+export type KnowledgeChunk = FactChunk;
+export { QUORUM as MIN_CONFIRMATIONS_MAP };
+export const MIN_CONFIRMATIONS = QUORUM.fact;
 
 // Stable swarm topic — all OBDient instances rendezvous here.
 const SWARM_TOPIC = b4a.from(
@@ -47,7 +41,8 @@ export class HypercoreKnowledgeSource {
   private swarm: InstanceType<typeof Hyperswarm> | null = null;
   private localFeed: InstanceType<typeof Hypercore> | null = null;
   private remoteFeeds: InstanceType<typeof Hypercore>[] = [];
-  private chunks: KnowledgeChunk[] = [];
+  private chunks: FactChunk[] = [];
+  private patterns: PatternChunk[] = [];
   private ready = false;
 
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
@@ -96,8 +91,13 @@ export class HypercoreKnowledgeSource {
     );
   }
 
+  // Return Layer 2 patterns that have reached quorum.
+  getPatterns(): PatternChunk[] {
+    return this.patterns.filter((p) => p.confirmations >= QUORUM.pattern);
+  }
+
   // Append an anonymous knowledge chunk to the local feed (opt-in only).
-  async contribute(chunk: KnowledgeChunk): Promise<void> {
+  async contribute(chunk: FactChunk): Promise<void> {
     if (this.localFeed == null) return;
     const buf = b4a.from(JSON.stringify(chunk), 'utf8');
     await new Promise<void>((resolve, reject) =>
@@ -119,6 +119,7 @@ export class HypercoreKnowledgeSource {
     this.localFeed = null;
     this.remoteFeeds = [];
     this.chunks = [];
+    this.patterns = [];
     this.ready = false;
   }
 
@@ -168,6 +169,23 @@ export class HypercoreKnowledgeSource {
     });
   }
 
+  private _dispatch(chunk: DistributedChunk): void {
+    if (isFactChunk(chunk) && chunk.content) {
+      this.chunks.push(chunk);
+      shimiTree.applyChunk(chunk);
+    } else if (isPatternChunk(chunk)) {
+      // Deduplicate by id, keeping the highest confirmations value
+      const existing = this.patterns.findIndex((p) => p.id === chunk.id);
+      if (existing >= 0) {
+        this.patterns[existing] = chunk;
+      } else {
+        this.patterns.push(chunk);
+      }
+    } else if (isSkosPatch(chunk)) {
+      shimiTree.applySkosPatch(chunk);
+    }
+  }
+
   private async _loadFeed(feed: InstanceType<typeof Hypercore>): Promise<void> {
     const length: number = await new Promise((resolve, reject) =>
       feed.update({ ifAvailable: true }, (err: Error | null) => {
@@ -183,12 +201,8 @@ export class HypercoreKnowledgeSource {
             err ? reject(err) : resolve(data),
           ),
         );
-        const chunk: KnowledgeChunk = JSON.parse(b4a.toString(buf, 'utf8'));
-        if (chunk && chunk.content) {
-          this.chunks.push(chunk);
-          // Update SHIMI confidence weight for the matching concept node
-          shimiTree.applyChunk(chunk);
-        }
+        const chunk: DistributedChunk = JSON.parse(b4a.toString(buf, 'utf8'));
+        this._dispatch(chunk);
       } catch {
         // Skip malformed chunks.
       }

@@ -17,10 +17,12 @@
 // node's docs, even if the latter is closer in embedding space.
 
 import { OBD_ONTOLOGY, CONCEPT_MAP, retrievalContext } from './obd-ontology';
+import type { SkosConceptNode } from './obd-ontology';
 import { OBD_KNOWLEDGE } from './obd-knowledge';
 import { createShimiNode, applyConfirmation, applyDecay } from './shimi-node';
 import type { ShimiNode } from './shimi-node';
-import type { KnowledgeChunk } from '@/data/datasources/hypercore-knowledge.datasource';
+import type { FactChunk, SkosPatch } from './distributed-chunk';
+import { QUORUM } from './distributed-chunk';
 import { createMMKV } from 'react-native-mmkv';
 
 const PERSISTENCE_KEY = 'shimi-confidence-v1';
@@ -103,6 +105,8 @@ function applyPersistedWeights(tree: Map<string, ShimiNode>, weights: PersistedW
 export class ShimiTree {
   private tree: Map<string, ShimiNode>;
   private decayTimer: ReturnType<typeof setInterval> | null = null;
+  // Pending SKOS patches — keyed by patch id, value is accumulated confirmation count
+  private pendingPatches: Map<string, { patch: SkosPatch; votes: number }> = new Map();
 
   constructor() {
     this.tree = buildTree();
@@ -136,12 +140,10 @@ export class ShimiTree {
       .slice(0, topK);
   }
 
-  /** Apply a Hypercore confirmation chunk to the matching SHIMI node.
-   *  Called by HypercoreKnowledgeSource when a peer chunk is received. */
-  applyChunk(chunk: KnowledgeChunk): void {
+  /** Apply a Layer 1 FactChunk confirmation to the matching SHIMI node. */
+  applyChunk(chunk: FactChunk): void {
     if (!chunk.dtc) return;
 
-    // Find the canonical concept for this DTC
     const contexts = retrievalContext(chunk.dtc);
     if (contexts.length === 0) return;
 
@@ -152,6 +154,30 @@ export class ShimiTree {
     const updated = applyConfirmation(node);
     this.tree.set(canonicalId, updated);
     persistWeights(this.tree);
+  }
+
+  /** Apply a Layer 3 SkosPatch. Patches are queued until they reach quorum.
+   *  Once quorum is reached the patch is applied to the live tree and persisted. */
+  applySkosPatch(patch: SkosPatch): void {
+    const entry = this.pendingPatches.get(patch.id) ?? { patch, votes: 0 };
+    entry.votes += 1;
+    this.pendingPatches.set(patch.id, entry);
+
+    if (entry.votes < QUORUM.skosPatch) return;
+
+    // Quorum reached — apply the patch to the tree
+    this._executePatch(patch);
+    this.pendingPatches.delete(patch.id);
+    persistWeights(this.tree);
+  }
+
+  /** Return all pending patches and their current vote counts (for debug UI). */
+  pendingPatchStatus(): { patch: SkosPatch; votes: number; quorum: number }[] {
+    return [...this.pendingPatches.values()].map((e) => ({
+      patch: e.patch,
+      votes: e.votes,
+      quorum: QUORUM.skosPatch,
+    }));
   }
 
   /** Return the current confidence weight for a concept id. */
@@ -188,6 +214,60 @@ export class ShimiTree {
       .sort((a, b) => b.confidence - a.confidence)
       .map((c) => c.content)
       .slice(0, topK);
+  }
+
+  /** Execute a validated SKOS patch against the live tree. */
+  private _executePatch(patch: SkosPatch): void {
+    const target = this.tree.get(patch.targetConceptId);
+    if (!target) return;
+
+    if (patch.op === 'addNarrower' && patch.newConcept) {
+      const { id, label } = patch.newConcept;
+      if (this.tree.has(id)) return; // already exists
+
+      const newConceptDef: SkosConceptNode = {
+        id,
+        label,
+        broader: patch.targetConceptId,
+        narrower: [],
+        related: [],
+        dtcs: [],
+        conditionIds: [],
+      };
+      const newNode = createShimiNode(newConceptDef, []);
+      this.tree.set(id, newNode);
+
+      // Update parent's narrower list (create a new object — nodes are readonly)
+      this.tree.set(patch.targetConceptId, {
+        ...target,
+        concept: {
+          ...target.concept,
+          narrower: [...target.concept.narrower, id],
+        },
+      });
+    }
+
+    if (patch.op === 'addRelated' && patch.relatedConceptId) {
+      if (this.tree.has(patch.relatedConceptId)) {
+        this.tree.set(patch.targetConceptId, {
+          ...target,
+          concept: {
+            ...target.concept,
+            related: [...target.concept.related, patch.relatedConceptId],
+          },
+        });
+      }
+    }
+
+    if (patch.op === 'addDtcMapping' && patch.dtcId) {
+      this.tree.set(patch.targetConceptId, {
+        ...target,
+        concept: {
+          ...target.concept,
+          dtcs: [...target.concept.dtcs, patch.dtcId],
+        },
+      });
+    }
   }
 
   /** Decay all nodes above baseline every 6 hours. */

@@ -5,6 +5,7 @@
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { shimiDataSource } from '@/data/datasources/shimi.datasource';
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
+import { evaluatePatterns } from '@/data/datasources/pattern-evaluator';
 import { retrievalContext } from '@/data/knowledge/obd-ontology';
 import { isQvacError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult, LLMChatRequest } from '@/domain/repositories/i-llm.repository';
@@ -30,13 +31,21 @@ export class LLMRepositoryImpl implements ILLMRepository {
       // SHIMI retrieval: hierarchical (confidence-ranked) + QVAC RAG hybrid.
       const localSnippets = await shimiDataSource.search(primaryDtcId, expandedQuery, 6);
 
-      // Distributed knowledge from Hypercore peers (opt-in, graceful degradation).
+      // Layer 1 — distributed atomic facts from Hypercore peers.
       const remoteSnippets = hypercoreKnowledge
         .getChunks(primaryDtcId)
         .slice(0, 3)
         .map((c) => c.content);
 
-      const knowledge = [...localSnippets, ...remoteSnippets];
+      // Layer 2 — conditional patterns evaluated against the live OBD snapshot.
+      const patternMatches = evaluatePatterns(
+        hypercoreKnowledge.getPatterns(),
+        request.troubleCodes,
+        request.parameters,
+        request.vehicleContext,
+      ).map((m) => `Pattern (confidence ${m.pattern.confidence.toFixed(2)}): ${m.conclusion}`);
+
+      const knowledge = [...localSnippets, ...remoteSnippets, ...patternMatches];
 
       const result = await qvacSDK.interpret(
         request.parameters,
