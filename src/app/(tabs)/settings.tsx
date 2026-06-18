@@ -10,6 +10,7 @@ import { useSettingsVM } from '@/presentation/viewmodels/useSettingsVM';
 import { useOBDStore } from '@/store/obdStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
+import { trustRegistry } from '@/data/datasources/trust-registry';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
@@ -60,6 +61,7 @@ export default function SettingsScreen() {
 
   const [modelUrlInput, setModelUrlInput] = useState(customModelSrc ?? '');
   const [peerCount, setPeerCount]         = useState(0);
+  const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
 
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
@@ -74,8 +76,12 @@ export default function SettingsScreen() {
   // Refresh peer count every 5 s while the network is enabled.
   useEffect(() => {
     if (!knowledgeNetworkEnabled) { setPeerCount(0); return; }
-    const id = setInterval(() => setPeerCount(hypercoreKnowledge.peerCount()), 5000);
+    const id = setInterval(() => {
+      setPeerCount(hypercoreKnowledge.peerCount());
+      setTrustStats(trustRegistry.stats());
+    }, 5000);
     setPeerCount(hypercoreKnowledge.peerCount());
+    setTrustStats(trustRegistry.stats());
     return () => clearInterval(id);
   }, [knowledgeNetworkEnabled]);
 
@@ -359,7 +365,7 @@ export default function SettingsScreen() {
                 />
               </SettingsRow>
 
-              <View className="flex-row items-center justify-between py-2 mb-1">
+              <View className="flex-row items-center justify-between py-2">
                 <Text className="text-brand-muted font-mono text-xs">Connected peers</Text>
                 <View className={`px-2 py-0.5 rounded-md border ${peerCount > 0 ? 'border-brand-teal' : 'border-brand-muted'}`}>
                   <Text className={`font-mono text-xs ${peerCount > 0 ? 'text-brand-teal' : 'text-brand-muted'}`}>
@@ -367,6 +373,25 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
+
+              {trustStats.total > 0 && (
+                <View className="flex-row gap-2 pb-2">
+                  <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
+                    <Text className="text-brand-muted font-mono text-xs">Known</Text>
+                    <Text className="text-brand-text font-mono text-sm mt-0.5">{trustStats.total}</Text>
+                  </View>
+                  <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
+                    <Text className="text-brand-muted font-mono text-xs">Trusted</Text>
+                    <Text className="text-brand-teal font-mono text-sm mt-0.5">{trustStats.trusted}</Text>
+                  </View>
+                  {trustStats.silenced > 0 && (
+                    <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
+                      <Text className="text-brand-muted font-mono text-xs">Silenced</Text>
+                      <Text className="text-brand-red font-mono text-sm mt-0.5">{trustStats.silenced}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </>
           )}
         </View>

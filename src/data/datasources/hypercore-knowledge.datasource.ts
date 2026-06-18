@@ -22,8 +22,9 @@ import Hyperswarm from 'hyperswarm';
 import b4a from 'b4a';
 import * as FileSystem from 'expo-file-system';
 import { shimiTree } from '@/data/knowledge/shimi-tree';
-import type { DistributedChunk, FactChunk, PatternChunk, SkosPatch } from '@/data/knowledge/distributed-chunk';
+import type { DistributedChunk, FactChunk, PatternChunk } from '@/data/knowledge/distributed-chunk';
 import { isFactChunk, isPatternChunk, isSkosPatch, QUORUM } from '@/data/knowledge/distributed-chunk';
+import { trustRegistry } from './trust-registry';
 
 // Re-export FactChunk as KnowledgeChunk for backwards compatibility with
 // knowledge-extractor.ts and sessionStore.ts.
@@ -44,6 +45,9 @@ export class HypercoreKnowledgeSource {
   private chunks: FactChunk[] = [];
   private patterns: PatternChunk[] = [];
   private ready = false;
+  // Maps remoteFeed index → peerId (sha256-hex of the peer's public key)
+  private feedPeerIds: Map<number, string> = new Map();
+  private feedIndex = 0;
 
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
     if (!opts.enabled) return;
@@ -120,41 +124,45 @@ export class HypercoreKnowledgeSource {
     this.remoteFeeds = [];
     this.chunks = [];
     this.patterns = [];
+    this.feedPeerIds.clear();
+    this.feedIndex = 0;
     this.ready = false;
   }
 
   // --- Private ---
 
-  private _onPeer(socket: NodeJS.ReadWriteStream): void {
+  private _onPeer(socket: NodeJS.ReadWriteStream & { remotePublicKey?: Buffer }): void {
+    // Derive a stable peerId from the remote public key (no raw key stored).
+    const peerId = socket.remotePublicKey
+      ? b4a.toString(socket.remotePublicKey, 'hex').slice(0, 16)
+      : `unknown-${Date.now()}`;
+
+    trustRegistry.recordPublication(peerId);
+
     // Replicate local feed to/from peer.
     if (this.localFeed) {
       const stream = this.localFeed.replicate(true);
       stream.pipe(socket as any).pipe(stream);
     }
 
-    // Open a read-only remote feed identified by the peer's public key.
-    // We do this lazily: the key is exchanged via the replication handshake.
+    const idx = this.feedIndex++;
     const remoteFeed = new Hypercore(
-      (name: string) => {
+      () => {
         // In-memory storage for remote feeds (no disk persistence).
-        const chunks: Record<string, Buffer> = {};
+        const store: Record<string, Buffer> = {};
         return {
           read: (key: string, cb: (err: Error | null, buf?: Buffer) => void) =>
-            cb(null, chunks[key]),
-          write: (
-            key: string,
-            value: Buffer,
-            cb: (err: Error | null) => void,
-          ) => {
-            chunks[key] = value;
+            cb(null, store[key]),
+          write: (key: string, value: Buffer, cb: (err: Error | null) => void) => {
+            store[key] = value;
             cb(null);
           },
           del: (key: string, cb: (err: Error | null) => void) => {
-            delete chunks[key];
+            delete store[key];
             cb(null);
           },
           list: (cb: (err: Error | null, list?: string[]) => void) =>
-            cb(null, Object.keys(chunks)),
+            cb(null, Object.keys(store)),
         };
       },
     );
@@ -162,31 +170,53 @@ export class HypercoreKnowledgeSource {
     remoteFeed.ready((err: Error | null) => {
       if (err) return;
       this.remoteFeeds.push(remoteFeed);
-      this._loadFeed(remoteFeed);
+      this.feedPeerIds.set(idx, peerId);
+      this._loadFeed(remoteFeed, peerId);
 
       const remoteStream = remoteFeed.replicate(false);
       remoteStream.pipe(socket as any).pipe(remoteStream);
     });
   }
 
-  private _dispatch(chunk: DistributedChunk): void {
+  private _dispatch(chunk: DistributedChunk, peerId: string): void {
+    // Gate: silenced peers contribute nothing
+    if (!trustRegistry.isTrusted(peerId)) return;
+
     if (isFactChunk(chunk) && chunk.content) {
-      this.chunks.push(chunk);
-      shimiTree.applyChunk(chunk);
+      // Weight confidence by peer reputation before storing
+      const weighted: FactChunk = {
+        ...chunk,
+        confidence: trustRegistry.weightedConfidence(chunk.confidence, peerId),
+      };
+      this.chunks.push(weighted);
+      shimiTree.applyChunk(weighted);
+      // Record confirmation signal when a chunk reaches quorum
+      if (weighted.confirmations >= QUORUM.fact) {
+        trustRegistry.recordConfirmation(peerId);
+      }
     } else if (isPatternChunk(chunk)) {
-      // Deduplicate by id, keeping the highest confirmations value
-      const existing = this.patterns.findIndex((p) => p.id === chunk.id);
+      const weighted: PatternChunk = {
+        ...chunk,
+        confidence: trustRegistry.weightedConfidence(chunk.confidence, peerId),
+      };
+      const existing = this.patterns.findIndex((p) => p.id === weighted.id);
       if (existing >= 0) {
-        this.patterns[existing] = chunk;
+        this.patterns[existing] = weighted;
       } else {
-        this.patterns.push(chunk);
+        this.patterns.push(weighted);
+      }
+      if (weighted.confirmations >= QUORUM.pattern) {
+        trustRegistry.recordConfirmation(peerId);
       }
     } else if (isSkosPatch(chunk)) {
-      shimiTree.applySkosPatch(chunk);
+      // Only high-trust peers can influence ontology patches
+      if (trustRegistry.scoreFor(peerId) >= 0.7) {
+        shimiTree.applySkosPatch(chunk);
+      }
     }
   }
 
-  private async _loadFeed(feed: InstanceType<typeof Hypercore>): Promise<void> {
+  private async _loadFeed(feed: InstanceType<typeof Hypercore>, peerId = 'local'): Promise<void> {
     const length: number = await new Promise((resolve, reject) =>
       feed.update({ ifAvailable: true }, (err: Error | null) => {
         if (err) return resolve(0);
@@ -202,7 +232,7 @@ export class HypercoreKnowledgeSource {
           ),
         );
         const chunk: DistributedChunk = JSON.parse(b4a.toString(buf, 'utf8'));
-        this._dispatch(chunk);
+        this._dispatch(chunk, peerId);
       } catch {
         // Skip malformed chunks.
       }
