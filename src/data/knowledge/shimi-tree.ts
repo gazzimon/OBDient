@@ -147,7 +147,7 @@ export class ShimiTree {
     const contexts = retrievalContext(chunk.dtc);
     if (contexts.length === 0) return;
 
-    const canonicalId = contexts[0].id;
+    const canonicalId = contexts[0]!.id;
     const node = this.tree.get(canonicalId);
     if (!node) return;
 

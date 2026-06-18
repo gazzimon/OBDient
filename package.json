@@ -55,7 +55,7 @@
     "web": "expo start --web",
     "prebuild": "expo prebuild",
     "prebuild:android": "expo prebuild --platform android",
-    "test": "jest",
+    "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio"
