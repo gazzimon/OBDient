@@ -31,7 +31,7 @@ function evaluateCondition(
   // All parameter thresholds must be satisfied
   if (condition.params) {
     for (const [pid, threshold] of Object.entries(condition.params)) {
-      const param = parameters[pid];
+      const param = (parameters as Record<string, typeof parameters[keyof typeof parameters]>)[pid];
       if (param?.value == null) continue; // missing param → skip threshold check
       const val = Number(param.value);
       if (threshold.lt != null && val >= threshold.lt) return false;

@@ -374,8 +374,10 @@ export function retrievalContext(dtcId: string): SkosConceptNode[] {
   ancestors(canonical.id).forEach(collect);
   canonical.related
     .map((r) => CONCEPT_MAP[r])
-    .filter(Boolean)
+    .filter((n): n is SkosConceptNode => n != null)
     .forEach(collect);
 
-  return [...seen].map((id) => CONCEPT_MAP[id]).filter(Boolean);
+  return [...seen]
+    .map((id) => CONCEPT_MAP[id])
+    .filter((n): n is SkosConceptNode => n != null);
 }
