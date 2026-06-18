@@ -9,6 +9,7 @@ import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider'
 import { useSettingsVM } from '@/presentation/viewmodels/useSettingsVM';
 import { useOBDStore } from '@/store/obdStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
@@ -50,9 +51,15 @@ export default function SettingsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
-  const customModelSrc    = useSettingsStore((s) => s.customModelSrc);
-  const setCustomModelSrc = useSettingsStore((s) => s.setCustomModelSrc);
+  const customModelSrc          = useSettingsStore((s) => s.customModelSrc);
+  const setCustomModelSrc       = useSettingsStore((s) => s.setCustomModelSrc);
+  const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
+  const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
+  const contributeKnowledge     = useSettingsStore((s) => s.contributeKnowledge);
+  const setContributeKnowledge  = useSettingsStore((s) => s.setContributeKnowledge);
+
   const [modelUrlInput, setModelUrlInput] = useState(customModelSrc ?? '');
+  const [peerCount, setPeerCount]         = useState(0);
 
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
@@ -63,6 +70,14 @@ export default function SettingsScreen() {
   useEffect(() => {
     setModelLoaded(qvacSDK.isLoaded());
   }, []);
+
+  // Refresh peer count every 5 s while the network is enabled.
+  useEffect(() => {
+    if (!knowledgeNetworkEnabled) { setPeerCount(0); return; }
+    const id = setInterval(() => setPeerCount(hypercoreKnowledge.peerCount()), 5000);
+    setPeerCount(hypercoreKnowledge.peerCount());
+    return () => clearInterval(id);
+  }, [knowledgeNetworkEnabled]);
 
   const handleLoadModel = async () => {
     if (modelLoading || modelLoaded) return;
@@ -305,6 +320,54 @@ export default function SettingsScreen() {
             <Text className="text-brand-red font-mono text-xs mt-3" selectable>
               {modelError}
             </Text>
+          )}
+        </View>
+
+        {/* ---------- Knowledge network ---------- */}
+        <SectionHeader title="Knowledge network" />
+
+        <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-4">
+          <SettingsRow>
+            <View className="flex-1 mr-4">
+              <Text className="text-brand-text font-mono text-sm">Distributed RAG</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Share anonymised diagnostic knowledge with peers via P2P
+              </Text>
+            </View>
+            <Switch
+              value={knowledgeNetworkEnabled}
+              onValueChange={setKnowledgeNetworkEnabled}
+              trackColor={{ false: '#2A2A2A', true: MINT }}
+              thumbColor="#FFFFFF"
+            />
+          </SettingsRow>
+
+          {knowledgeNetworkEnabled && (
+            <>
+              <SettingsRow>
+                <View className="flex-1 mr-4">
+                  <Text className="text-brand-text font-mono text-sm">Contribute knowledge</Text>
+                  <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                    Send anonymous DTC patterns to the shared feed (opt-in)
+                  </Text>
+                </View>
+                <Switch
+                  value={contributeKnowledge}
+                  onValueChange={setContributeKnowledge}
+                  trackColor={{ false: '#2A2A2A', true: MINT }}
+                  thumbColor="#FFFFFF"
+                />
+              </SettingsRow>
+
+              <View className="flex-row items-center justify-between py-2 mb-1">
+                <Text className="text-brand-muted font-mono text-xs">Connected peers</Text>
+                <View className={`px-2 py-0.5 rounded-md border ${peerCount > 0 ? 'border-brand-teal' : 'border-brand-muted'}`}>
+                  <Text className={`font-mono text-xs ${peerCount > 0 ? 'text-brand-teal' : 'text-brand-muted'}`}>
+                    {peerCount > 0 ? `${peerCount} peer${peerCount !== 1 ? 's' : ''}` : 'searching…'}
+                  </Text>
+                </View>
+              </View>
+            </>
           )}
         </View>
 
