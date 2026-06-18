@@ -4,6 +4,7 @@
 
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
+import { hypercoreKnowledge, MIN_CONFIRMATIONS } from '@/data/datasources/hypercore-knowledge.datasource';
 import { isQvacError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult, LLMChatRequest } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
@@ -18,7 +19,16 @@ export class LLMRepositoryImpl implements ILLMRepository {
         request.parameters,
         request.troubleCodes,
       );
-      const knowledge = await qvacRag.search(query, 4);
+      const localSnippets = await qvacRag.search(query, 4);
+
+      // Enrich with distributed knowledge from Hypercore peers (opt-in, graceful degradation).
+      const primaryDtc = request.troubleCodes[0]?.code;
+      const remoteSnippets = hypercoreKnowledge
+        .getChunks(primaryDtc)
+        .slice(0, 3)
+        .map((c) => c.content);
+
+      const knowledge = [...localSnippets, ...remoteSnippets];
 
       const result = await qvacSDK.interpret(
         request.parameters,
