@@ -1,6 +1,8 @@
 // Singleton use case instances shared across the presentation layer.
 // All repositories wire themselves to their own datasource singletons.
 
+import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
+import { useSettingsStore } from '@/store/settingsStore';
 import { OBDRepositoryImpl } from '@/data/repositories/obd.repository.impl';
 import { LLMRepositoryImpl } from '@/data/repositories/llm.repository.impl';
 import { ReportRepositoryImpl } from '@/data/repositories/report.repository.impl';
@@ -11,6 +13,14 @@ import { ClearTroubleCodesUseCase } from '@/domain/usecases/clear-trouble-codes'
 import { InterpretWithQVACUseCase } from '@/domain/usecases/interpret-with-qvac';
 import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
+
+// Initialize Hypercore network conditionally based on persisted user preference.
+// Runs once at startup; safe to call even if the store hasn't hydrated yet
+// (the toggle defaults to false, so nothing starts unless the user opted in).
+void (async () => {
+  const { knowledgeNetworkEnabled } = useSettingsStore.getState();
+  await hypercoreKnowledge.initialize({ enabled: knowledgeNetworkEnabled });
+})();
 
 const obdRepo = new OBDRepositoryImpl();
 const llmRepo = new LLMRepositoryImpl();
