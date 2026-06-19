@@ -31,7 +31,7 @@ const ROOT_POWERTRAIN: SkosConceptNode = {
   id: 'powertrain',
   label: 'Powertrain (P)',
   broader: null,
-  narrower: ['ignition', 'fuel_system', 'emissions', 'sensors_engine', 'transmission'],
+  narrower: ['ignition', 'fuel_system', 'emissions', 'sensors_engine', 'transmission', 'turbo'],
   related: [],
   dtcs: ['dtc-prefixes'],
   conditionIds: [],
@@ -75,7 +75,7 @@ const IGNITION: SkosConceptNode = {
   id: 'ignition',
   label: 'Ignition system',
   broader: 'powertrain',
-  narrower: ['misfire_random', 'misfire_cylinder'],
+  narrower: ['misfire_random', 'misfire_cylinder', 'vvt', 'timing_correlation'],
   // P0300/P030x misfires also affect emissions — cross-branch relation
   related: ['emissions', 'fuel_system'],
   dtcs: [],
@@ -152,8 +152,8 @@ const FUEL_DELIVERY: SkosConceptNode = {
   broader: 'fuel_system',
   narrower: [],
   related: ['fuel_injectors', 'misfire_random'],
-  dtcs: [],
-  conditionIds: [],
+  dtcs: ['P0087', 'P0088'],
+  conditionIds: ['cond-fuel-pressure'],
 };
 
 const FUEL_INJECTORS: SkosConceptNode = {
@@ -212,6 +212,30 @@ const EGR: SkosConceptNode = {
 };
 
 // ---------------------------------------------------------------------------
+// Powertrain — Timing / VVT branch
+// ---------------------------------------------------------------------------
+
+const TIMING_CORRELATION: SkosConceptNode = {
+  id: 'timing_correlation',
+  label: 'Crankshaft/camshaft timing correlation (P0016/P0017)',
+  broader: 'ignition',
+  narrower: [],
+  related: ['vvt', 'sensor_crank', 'sensor_cam'],
+  dtcs: ['P0016', 'P0017'],
+  conditionIds: [],
+};
+
+const VVT: SkosConceptNode = {
+  id: 'vvt',
+  label: 'Variable Valve Timing (VVT) — P0011/P0012',
+  broader: 'ignition',
+  narrower: [],
+  related: ['timing_correlation', 'sensor_cam'],
+  dtcs: ['P0011', 'P0012'],
+  conditionIds: [],
+};
+
+// ---------------------------------------------------------------------------
 // Powertrain — Engine sensors branch
 // ---------------------------------------------------------------------------
 
@@ -219,7 +243,7 @@ const SENSORS_ENGINE: SkosConceptNode = {
   id: 'sensors_engine',
   label: 'Engine sensors',
   broader: 'powertrain',
-  narrower: ['sensor_temperature', 'sensor_speed'],
+  narrower: ['sensor_temperature', 'sensor_speed', 'sensor_o2', 'sensor_maf', 'sensor_crank', 'sensor_cam', 'sensor_knock'],
   related: ['fuel_system'],
   dtcs: [],
   conditionIds: [],
@@ -242,6 +266,76 @@ const SENSOR_SPEED: SkosConceptNode = {
   narrower: [],
   related: [],
   dtcs: ['P0500'],
+  conditionIds: [],
+};
+
+const SENSOR_O2: SkosConceptNode = {
+  id: 'sensor_o2',
+  label: 'Oxygen / lambda sensors (P0130–P0167)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['catalyst', 'fuel_mixture'],
+  dtcs: ['P0130-P0167'],
+  conditionIds: [],
+};
+
+const SENSOR_MAF: SkosConceptNode = {
+  id: 'sensor_maf',
+  label: 'Mass Air Flow sensor (P0100–P0104)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['fuel_lean', 'fuel_rich', 'throttle'],
+  dtcs: ['P0100-P0104'],
+  conditionIds: [],
+};
+
+const SENSOR_CRANK: SkosConceptNode = {
+  id: 'sensor_crank',
+  label: 'Crankshaft Position Sensor (P0335–P0338)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['timing_correlation', 'misfire_random'],
+  dtcs: ['P0335-P0338'],
+  conditionIds: [],
+};
+
+const SENSOR_CAM: SkosConceptNode = {
+  id: 'sensor_cam',
+  label: 'Camshaft Position Sensor (P0340–P0349)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['timing_correlation', 'vvt'],
+  dtcs: ['P0340-P0349'],
+  conditionIds: [],
+};
+
+const SENSOR_KNOCK: SkosConceptNode = {
+  id: 'sensor_knock',
+  label: 'Knock Sensor (P0325–P0334)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['misfire_random', 'ignition'],
+  dtcs: ['P0325-P0334'],
+  conditionIds: [],
+};
+
+const THROTTLE: SkosConceptNode = {
+  id: 'throttle',
+  label: 'Throttle body / pedal position sensor (P0120/P0221)',
+  broader: 'sensors_engine',
+  narrower: [],
+  related: ['fuel_mixture', 'sensor_maf'],
+  dtcs: ['P0120-P0124', 'P0221-P0229'],
+  conditionIds: [],
+};
+
+const TURBO: SkosConceptNode = {
+  id: 'turbo',
+  label: 'Turbocharger / supercharger (P0234/P0299)',
+  broader: 'powertrain',
+  narrower: [],
+  related: ['fuel_delivery', 'sensor_maf'],
+  dtcs: ['P0234', 'P0299'],
   conditionIds: [],
 };
 
@@ -279,8 +373,18 @@ const LIVE_VOLTAGE: SkosConceptNode = {
   broader: 'powertrain',
   narrower: [],
   related: [],
-  dtcs: [],
+  dtcs: ['P0562'],
   conditionIds: ['cond-voltage'],
+};
+
+const LIVE_OIL: SkosConceptNode = {
+  id: 'live_oil',
+  label: 'Live condition — Low engine oil pressure',
+  broader: 'powertrain',
+  narrower: [],
+  related: ['vvt', 'timing_correlation'],
+  dtcs: [],
+  conditionIds: ['cond-oil-pressure'],
 };
 
 const LIVE_RPM: SkosConceptNode = {
@@ -302,26 +406,43 @@ export const OBD_ONTOLOGY: readonly SkosConceptNode[] = [
   ROOT_BODY,
   ROOT_CHASSIS,
   ROOT_NETWORK,
+  // Ignition
   IGNITION,
   MISFIRE_RANDOM,
   MISFIRE_CYLINDER,
+  VVT,
+  TIMING_CORRELATION,
+  // Fuel
   FUEL_SYSTEM,
   FUEL_MIXTURE,
   FUEL_LEAN,
   FUEL_RICH,
   FUEL_DELIVERY,
   FUEL_INJECTORS,
+  // Emissions
   EMISSIONS,
   CATALYST,
   EVAP,
   EGR,
+  // Sensors
   SENSORS_ENGINE,
   SENSOR_TEMPERATURE,
   SENSOR_SPEED,
+  SENSOR_O2,
+  SENSOR_MAF,
+  SENSOR_CRANK,
+  SENSOR_CAM,
+  SENSOR_KNOCK,
+  THROTTLE,
+  // Turbo
+  TURBO,
+  // Transmission
   TRANSMISSION,
+  // Live conditions
   LIVE_OVERHEAT,
   LIVE_VOLTAGE,
   LIVE_RPM,
+  LIVE_OIL,
 ];
 
 // Lookup map: concept id → node (O(1) access)

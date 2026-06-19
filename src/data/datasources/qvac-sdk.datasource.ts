@@ -7,7 +7,7 @@
 //   3. Call dispose() when the app goes to background to free RAM (optional).
 //
 // The model is kept in memory between calls for fast response times.
-// The 4-bit ~1B model needs roughly 1 GB of RAM — safe to keep loaded.
+// CARpsy Q4_K_M (0.6B) needs roughly 400 MB of RAM — safe to keep loaded on mid-range phones.
 
 import {
   loadModel,
@@ -27,20 +27,22 @@ export interface QvacInterpretationResult {
   generatedAt: Date;
 }
 
-// Default on-device model — Llama 3.2 1B (4-bit), small enough for low-RAM phones.
-// To use a larger/different on-device model, swap this for another SDK model
-// constant (e.g. QWEN3_600M_INST_Q4) or pass a GGUF modelSrc (local path,
-// https URL, or pear:// hyperdrive key for P2P distribution).
-const DEFAULT_MODEL = LLAMA_3_2_1B_INST_Q4_0;
+// CARpsy — OBDient's fine-tuned Qwen3-0.6B model, specialized for OBD-II diagnostics.
+// Hosted on Hugging Face; downloaded once and cached on device by the QVAC SDK.
+// Fallback: LLAMA_3_2_1B_INST_Q4_0 if the custom model fails to load.
+const CARPSY_MODEL_URL =
+  'https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF/resolve/main/CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf';
+const DEFAULT_MODEL = CARPSY_MODEL_URL;
 
-const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
+const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant for professional mechanics.
 You receive real-time OBD-II vehicle data and fault codes.
-When a "Relevant diagnostic knowledge" section is provided, use it to ground your
-explanation and recommended actions; prefer it over your own assumptions.
+When a "Relevant diagnostic knowledge" section is provided, base your diagnosis ONLY on that knowledge.
+Do not add causes, parts, or diagnoses that are not listed in the provided knowledge.
+If no relevant knowledge is provided for a code, say so explicitly — do not guess from memory.
 Always respond in English, clearly and concisely.
-If there are active DTC codes, explain what they mean and what to do.
+If there are active DTC codes, explain what they mean and what to do next.
 If parameters are normal, say so briefly.
-Prioritize safety: if something is urgent, indicate it clearly.
+Prioritize safety: if something is urgent, state it in the first sentence.
 Maximum 3 sentences. No unnecessary technical jargon.`;
 
 export class QvacSDKDataSource {
@@ -205,9 +207,12 @@ export class QvacSDKDataSource {
     }
 
     if (knowledgeContext && knowledgeContext.length > 0) {
-      lines.push('\nRelevant diagnostic knowledge (retrieved on-device):');
+      lines.push('\nRelevant diagnostic knowledge (retrieved on-device — base your diagnosis on this):');
       for (const snippet of knowledgeContext) {
-        lines.push(`  - ${snippet}`);
+        // Prefix each snippet with the DTC it belongs to if detectable (format: "DTC Pxxxx — ...")
+        const dtcMatch = snippet.match(/DTC\s+(P\d{4}[^—\s]*)/);
+        const label = dtcMatch ? `[${dtcMatch[1]}] ` : '';
+        lines.push(`  - ${label}${snippet}`);
       }
     }
 
