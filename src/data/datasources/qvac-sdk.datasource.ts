@@ -65,7 +65,7 @@ export class QvacSDKDataSource {
 
     this.loadingPromise = (async () => {
       try {
-        this.modelId = await loadModel({ modelSrc });
+        this.modelId = await loadModel({ modelSrc, modelType: 'llamacpp-completion' });
         this.loadProgress = 1;
         onProgress?.(1);
       } catch (err) {
