@@ -34,16 +34,20 @@ const CARPSY_MODEL_URL =
   'https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF/resolve/main/CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf';
 const DEFAULT_MODEL = CARPSY_MODEL_URL;
 
-const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant for professional mechanics.
-You receive real-time OBD-II vehicle data and fault codes.
+const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
+You receive real-time OBD-II vehicle data and may or may not have fault codes.
+Respond in the same language the user writes in.
 When a "Relevant diagnostic knowledge" section is provided, base your diagnosis ONLY on that knowledge.
-Do not add causes, parts, or diagnoses that are not listed in the provided knowledge.
-If no relevant knowledge is provided for a code, say so explicitly — do not guess from memory.
-Always respond in English, clearly and concisely.
+Do not add causes or diagnoses not listed in the provided knowledge.
 If there are active DTC codes, explain what they mean and what to do next.
-If parameters are normal, say so briefly.
+If there are NO fault codes, analyze the live sensor data and tell the user whether everything looks normal or if anything stands out.
+If parameters are normal, say so briefly and reassuringly.
 Prioritize safety: if something is urgent, state it in the first sentence.
 Maximum 3 sentences. No unnecessary technical jargon.`;
+
+function stripThinkingTokens(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+}
 
 export class QvacSDKDataSource {
   private modelId: string | null = null;
@@ -126,7 +130,7 @@ export class QvacSDKDataSource {
       throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
     }
 
-    const trimmed = text.trim();
+    const trimmed = stripThinkingTokens(text);
     if (!trimmed) throw new QvacRequestError(0, 'QVAC returned empty response');
     return { text: trimmed, generatedAt: new Date() };
   }
@@ -165,7 +169,7 @@ export class QvacSDKDataSource {
       throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
     }
 
-    const trimmed = text.trim();
+    const trimmed = stripThinkingTokens(text);
     if (!trimmed) {
       throw new QvacRequestError(0, 'QVAC returned empty response');
     }

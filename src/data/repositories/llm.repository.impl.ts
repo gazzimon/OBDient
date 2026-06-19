@@ -68,7 +68,18 @@ export class LLMRepositoryImpl implements ILLMRepository {
 
   async chat(request: LLMChatRequest): Promise<LLMInterpretationResult> {
     try {
-      const result = await qvacSDK.chat(request.systemContext, request.history);
+      // Extract last user message as retrieval query for SHIMI
+      const lastUserTurn = [...request.history].reverse().find((t) => t.role === 'user');
+      const query = lastUserTurn?.content ?? 'general vehicle health check';
+      const localSnippets = await shimiDataSource.search(undefined, query, 4);
+
+      // Inject knowledge snippets into system context if found
+      const knowledgeBlock = localSnippets.length > 0
+        ? `\n\nRelevant knowledge:\n${localSnippets.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`
+        : '';
+
+      const enrichedContext = request.systemContext + knowledgeBlock;
+      const result = await qvacSDK.chat(enrichedContext, request.history);
       return { ...result, isAiGenerated: true };
     } catch (err) {
       if (isQvacError(err)) {

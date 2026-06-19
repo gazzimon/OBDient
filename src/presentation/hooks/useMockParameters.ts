@@ -18,15 +18,26 @@ interface MockProfile {
 }
 
 const PROFILES: Record<PidId, MockProfile> = {
-  RPM:          { base: 1900, amplitude: 1100, periodS: 8,  jitter: 90 },
-  SPEED:        { base: 55,   amplitude: 35,   periodS: 14, jitter: 2 },
-  // Slowly climbs from cold start toward operating temp (handled below)
-  COOLANT_TEMP: { base: 88,   amplitude: 4,    periodS: 60, jitter: 0.5 },
-  ENGINE_LOAD:  { base: 45,   amplitude: 25,   periodS: 8,  jitter: 3 },
-  MAF:          { base: 14,   amplitude: 9,    periodS: 8,  jitter: 1 },
-  TPS:          { base: 30,   amplitude: 22,   periodS: 8,  jitter: 2 },
-  IAT:          { base: 32,   amplitude: 3,    periodS: 40, jitter: 0.5 },
-  VOLTAGE:      { base: 13.8, amplitude: 0.4,  periodS: 20, jitter: 0.05 },
+  RPM:             { base: 1900, amplitude: 1100, periodS: 8,  jitter: 90 },
+  SPEED:           { base: 55,   amplitude: 35,   periodS: 14, jitter: 2 },
+  COOLANT_TEMP:    { base: 88,   amplitude: 4,    periodS: 60, jitter: 0.5 },
+  ENGINE_LOAD:     { base: 45,   amplitude: 25,   periodS: 8,  jitter: 3 },
+  MAF:             { base: 14,   amplitude: 9,    periodS: 8,  jitter: 1 },
+  TPS:             { base: 30,   amplitude: 22,   periodS: 8,  jitter: 2 },
+  IAT:             { base: 32,   amplitude: 3,    periodS: 40, jitter: 0.5 },
+  VOLTAGE:         { base: 13.8, amplitude: 0.4,  periodS: 20, jitter: 0.05 },
+  FUEL_TRIM_SHORT: { base: 0,    amplitude: 8,    periodS: 6,  jitter: 1 },
+  FUEL_TRIM_LONG:  { base: 0,    amplitude: 3,    periodS: 30, jitter: 0.5 },
+  TIMING_ADVANCE:  { base: 12,   amplitude: 5,    periodS: 8,  jitter: 0.5 },
+  INTAKE_MAP:      { base: 35,   amplitude: 15,   periodS: 8,  jitter: 2 },
+  O2_B1S1:         { base: 0.45, amplitude: 0.4,  periodS: 2,  jitter: 0.05 },
+  O2_B1S2:         { base: 0.7,  amplitude: 0.1,  periodS: 10, jitter: 0.02 },
+  RUN_TIME:        { base: 300,  amplitude: 0,    periodS: 60, jitter: 0 },
+  FUEL_LEVEL:      { base: 65,   amplitude: 0,    periodS: 60, jitter: 0 },
+  BAROMETRIC:      { base: 101,  amplitude: 0,    periodS: 60, jitter: 0.2 },
+  CATALYST_TEMP:   { base: 450,  amplitude: 50,   periodS: 20, jitter: 5 },
+  RELATIVE_TPS:    { base: 15,   amplitude: 12,   periodS: 8,  jitter: 1 },
+  AMBIENT_TEMP:    { base: 25,   amplitude: 2,    periodS: 60, jitter: 0.3 },
 };
 
 // Coolant warm-up: reaches ~95% of operating temp after this many seconds

@@ -1,12 +1,13 @@
 import type { ILLMRepository, LLMInterpretationResult, ChatTurn } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
 import type { Vehicle } from '@/domain/entities/vehicle';
+import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 
 export interface ChatWithQVACInput {
   vehicle: Vehicle | null;
   mileage: number | null;
   troubleCodes: readonly TroubleCode[];
-  // All turns so far (user + assistant), excluding the initial system context
+  parameters: ObdParameterSnapshot;
   history: readonly ChatTurn[];
 }
 
@@ -33,6 +34,17 @@ export class ChatWithQVACUseCase {
       lines.push(`Odometer: ${input.mileage.toLocaleString()} km`);
     }
 
+    const paramEntries = Object.values(input.parameters).filter(Boolean);
+    if (paramEntries.length > 0) {
+      lines.push('\nLive OBD-II sensor readings:');
+      for (const param of paramEntries) {
+        if (param) {
+          const alert = param.alert ? ` ⚠️ ${param.alert.severity.toUpperCase()}: ${param.alert.message}` : '';
+          lines.push(`  ${param.name}: ${param.value.toFixed(1)} ${param.unit}${alert}`);
+        }
+      }
+    }
+
     if (input.troubleCodes.length > 0) {
       lines.push(`\nActive DTCs (${input.troubleCodes.length}):`);
       for (const dtc of input.troubleCodes) {
@@ -42,7 +54,7 @@ export class ChatWithQVACUseCase {
       lines.push('\nNo active DTCs found.');
     }
 
-    lines.push('\nYou are assisting a workshop technician. Answer concisely and ask follow-up questions when needed to narrow down the diagnosis.');
+    lines.push('\nYou are assisting a vehicle owner or technician. Answer concisely in the same language the user writes in.');
     return lines.join('\n');
   }
 }

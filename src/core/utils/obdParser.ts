@@ -86,6 +86,75 @@ function parseVoltage(response: string): number {
   return value;
 }
 
+// 0106/0107 — Fuel Trim: (A/128 - 1) * 100 → %
+function parseFuelTrim(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('FUEL_TRIM: missing byte');
+  return (byteToInt(a) / 128 - 1) * 100;
+}
+
+// 010E — Timing Advance: A/2 - 64 → °
+function parseTimingAdvance(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('TIMING_ADVANCE: missing byte');
+  return byteToInt(a) / 2 - 64;
+}
+
+// 010B — Intake Manifold Pressure: A → kPa
+function parseIntakeMap(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('INTAKE_MAP: missing byte');
+  return byteToInt(a);
+}
+
+// 0114/0115 — O2 Sensor: A*0.005 → V (voltage only, ignoring STFT byte B)
+function parseO2Sensor(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('O2: missing byte');
+  return byteToInt(a) * 0.005;
+}
+
+// 011F — Run Time Since Engine Start: (A*256)+B → seconds
+function parseRunTime(response: string): number {
+  const [a, b] = extractDataBytes(response);
+  if (a === undefined || b === undefined) throw new Error('RUN_TIME: missing bytes');
+  return byteToInt(a) * 256 + byteToInt(b);
+}
+
+// 012F — Fuel Level: A*100/255 → %
+function parseFuelLevel(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('FUEL_LEVEL: missing byte');
+  return (byteToInt(a) * 100) / 255;
+}
+
+// 0133 — Barometric Pressure: A → kPa
+function parseBarometric(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('BAROMETRIC: missing byte');
+  return byteToInt(a);
+}
+
+// 013C — Catalyst Temperature: ((A*256)+B)/10 - 40 → °C
+function parseCatalystTemp(response: string): number {
+  const [a, b] = extractDataBytes(response);
+  if (a === undefined || b === undefined) throw new Error('CATALYST_TEMP: missing bytes');
+  return (byteToInt(a) * 256 + byteToInt(b)) / 10 - 40;
+}
+
+// 0145/0146 — Relative TPS / Ambient Temp: A*100/255 → % | A-40 → °C
+function parseRelativeTps(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('RELATIVE_TPS: missing byte');
+  return (byteToInt(a) * 100) / 255;
+}
+
+function parseAmbientTemp(response: string): number {
+  const [a] = extractDataBytes(response);
+  if (a === undefined) throw new Error('AMBIENT_TEMP: missing byte');
+  return byteToInt(a) - 40;
+}
+
 // Known ELM327 non-data responses that indicate no sensor reading
 const NO_DATA_RESPONSES = new Set([
   'NODATA',
@@ -143,6 +212,38 @@ export function parsePidResponse(pidId: PidId, rawResponse: string): number {
       break;
     case 'VOLTAGE':
       value = parseVoltage(rawResponse);
+      break;
+    case 'FUEL_TRIM_SHORT':
+    case 'FUEL_TRIM_LONG':
+      value = parseFuelTrim(rawResponse);
+      break;
+    case 'TIMING_ADVANCE':
+      value = parseTimingAdvance(rawResponse);
+      break;
+    case 'INTAKE_MAP':
+      value = parseIntakeMap(rawResponse);
+      break;
+    case 'O2_B1S1':
+    case 'O2_B1S2':
+      value = parseO2Sensor(rawResponse);
+      break;
+    case 'RUN_TIME':
+      value = parseRunTime(rawResponse);
+      break;
+    case 'FUEL_LEVEL':
+      value = parseFuelLevel(rawResponse);
+      break;
+    case 'BAROMETRIC':
+      value = parseBarometric(rawResponse);
+      break;
+    case 'CATALYST_TEMP':
+      value = parseCatalystTemp(rawResponse);
+      break;
+    case 'RELATIVE_TPS':
+      value = parseRelativeTps(rawResponse);
+      break;
+    case 'AMBIENT_TEMP':
+      value = parseAmbientTemp(rawResponse);
       break;
   }
 

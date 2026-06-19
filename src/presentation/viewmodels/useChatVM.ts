@@ -13,6 +13,7 @@ export function useChatVM() {
   const [chatError, setChatError]       = useState<string | null>(null);
 
   const vehicle       = useOBDStore((s) => s.vehicle);
+  const parameters    = useOBDStore((s) => s.parameters);
   const activeSession = useSessionStore((s) => s.activeSession);
   const addChatMessage = useSessionStore((s) => s.addChatMessage);
 
@@ -39,6 +40,7 @@ export function useChatVM() {
         vehicle,
         mileage,
         troubleCodes: codes,
+        parameters,
         history,
       });
 
@@ -48,7 +50,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, messages, vehicle, mileage, codes, addChatMessage]);
+  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage]);
 
   // Auto-sends the initial QVAC assessment after DTCs are read
   const sendInitialAssessment = useCallback(async (prompt: string) => {
@@ -60,6 +62,7 @@ export function useChatVM() {
         vehicle,
         mileage,
         troubleCodes: codes,
+        parameters,
         history: [{ role: 'user', content: prompt }],
       });
       addChatMessage(createChatMessage('assistant', result.text));
@@ -68,7 +71,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, vehicle, mileage, codes, addChatMessage]);
+  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage]);
 
   return {
     messages,
