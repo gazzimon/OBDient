@@ -2,7 +2,7 @@
 // QVAC on-device model status, and alert preferences. QVAC grouped-card style.
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Switch, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider';
@@ -52,14 +52,11 @@ export default function SettingsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
-  const customModelSrc          = useSettingsStore((s) => s.customModelSrc);
-  const setCustomModelSrc       = useSettingsStore((s) => s.setCustomModelSrc);
   const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
   const contributeKnowledge     = useSettingsStore((s) => s.contributeKnowledge);
   const setContributeKnowledge  = useSettingsStore((s) => s.setContributeKnowledge);
 
-  const [modelUrlInput, setModelUrlInput] = useState(customModelSrc ?? '');
   const [peerCount, setPeerCount]         = useState(0);
   const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
 
@@ -92,7 +89,7 @@ export default function SettingsScreen() {
 
     // Stage 1: chat LLM (required).
     try {
-      await qvacSDK.initialize((p) => setModelProgress(p), customModelSrc);
+      await qvacSDK.initialize((p) => setModelProgress(p));
     } catch (err) {
       console.error('[QVAC] LLM model load failed:', err);
       setModelError(`LLM load failed — ${describeLoadError(err)}`);
@@ -261,7 +258,7 @@ export default function SettingsScreen() {
             <View>
               <Text className="text-brand-text font-mono text-sm">On-device model</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                {customModelSrc ? 'Fine-tuned model · runs offline' : 'Llama 3.2 + on-device RAG · runs offline'}
+                CARpsy · Qwen3-0.6B · runs offline
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>
@@ -270,24 +267,6 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
-
-          {/* Custom fine-tuned model URL */}
-          <Text className="text-brand-muted font-mono text-xs mb-1.5">
-            Custom model (HTTPS URL, local path, or pear:// key)
-          </Text>
-          <TextInput
-            value={modelUrlInput}
-            onChangeText={setModelUrlInput}
-            onEndEditing={() => {
-              const trimmed = modelUrlInput.trim();
-              setCustomModelSrc(trimmed || null);
-            }}
-            placeholder="Leave empty to use default Llama 3.2 1B"
-            placeholderTextColor="#9A9A9A"
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-brand-text font-mono text-xs mb-3"
-          />
 
           {modelLoading && (
             <View className="mb-3">
