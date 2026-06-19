@@ -109,6 +109,8 @@ export async function initializeDatabase(): Promise<void> {
     for (const sql of [
       `ALTER TABLE vehicles ADD COLUMN manufacturer TEXT`,
       `ALTER TABLE vehicles ADD COLUMN plant_country TEXT`,
+      `ALTER TABLE sessions ADD COLUMN messages_json TEXT NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE sessions ADD COLUMN mileage REAL`,
     ]) {
       try { db.run(sql); } catch { /* column already exists */ }
     }

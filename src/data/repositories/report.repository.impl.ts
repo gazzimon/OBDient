@@ -13,6 +13,7 @@ import { mapTroubleCodeToRow, mapRowToTroubleCode } from '@/data/mappers/dtc.map
 import { SessionNotFoundError } from '@/core/errors/obd.errors';
 import type { IReportRepository, ReportListItem } from '@/domain/repositories/i-report.repository';
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
+import type { ChatMessage } from '@/domain/entities/chat-message';
 
 export class ReportRepositoryImpl implements IReportRepository {
   async save(session: DiagnosticSession): Promise<void> {
@@ -23,6 +24,15 @@ export class ReportRepositoryImpl implements IReportRepository {
       endedAt: session.endedAt ?? undefined,
       status: session.status,
       parametersJson: JSON.stringify(session.parameters),
+      messagesJson: JSON.stringify(
+        session.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt.toISOString(),
+        })),
+      ),
+      mileage: session.mileage ?? undefined,
       interpretation: session.interpretation ?? undefined,
     });
 
@@ -36,12 +46,22 @@ export class ReportRepositoryImpl implements IReportRepository {
     return Promise.all(
       rows.map(async (row) => {
         const dtcs = await getTroubleCodesBySession(row.id);
+        const messageCount = (() => {
+          try {
+            const msgs = JSON.parse(row.messagesJson ?? '[]');
+            return Array.isArray(msgs) ? msgs.length : 0;
+          } catch {
+            return 0;
+          }
+        })();
+
         return {
           id: row.id,
           vehicleId: row.vehicleId,
           startedAt: new Date(row.startedAt),
           endedAt: row.endedAt ? new Date(row.endedAt) : null,
           dtcCount: dtcs.length,
+          messageCount,
           hasInterpretation: row.interpretation != null,
         } satisfies ReportListItem;
       }),
@@ -53,6 +73,17 @@ export class ReportRepositoryImpl implements IReportRepository {
     if (!row) return null;
 
     const dtcRows = await getTroubleCodesBySession(id);
+
+    const messages: ChatMessage[] = (() => {
+      try {
+        const raw = JSON.parse(row.messagesJson ?? '[]') as Array<{
+          id: string; role: 'user' | 'assistant'; content: string; createdAt: string;
+        }>;
+        return raw.map((m) => ({ ...m, createdAt: new Date(m.createdAt) }));
+      } catch {
+        return [];
+      }
+    })();
 
     return {
       id: row.id,
@@ -68,6 +99,8 @@ export class ReportRepositoryImpl implements IReportRepository {
         }
       })(),
       troubleCodes: dtcRows.map(mapRowToTroubleCode),
+      messages,
+      mileage: row.mileage ?? null,
       interpretation: row.interpretation ?? null,
     };
   }

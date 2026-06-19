@@ -8,6 +8,7 @@ export interface ReportListItem {
   readonly startedAt: Date;
   readonly endedAt: Date | null;
   readonly dtcCount: number;
+  readonly messageCount: number;
   readonly hasInterpretation: boolean;
 }
 

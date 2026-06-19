@@ -9,6 +9,9 @@ export const sessionsTable = sqliteTable('sessions', {
   status: text('status', { enum: ['active', 'completed', 'interrupted'] }).notNull(),
   // Full JSON snapshot of ObdParameterSnapshot
   parametersJson: text('parameters_json').notNull().default('{}'),
+  // Full JSON array of ChatMessage objects
+  messagesJson: text('messages_json').notNull().default('[]'),
+  mileage: real('mileage'),
   interpretation: text('interpretation'),
 });
 

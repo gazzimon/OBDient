@@ -37,6 +37,11 @@ function SessionCard({
         <Text className={`font-mono text-xs ${item.dtcCount > 0 ? 'text-brand-amber' : 'text-brand-teal'}`}>
           {item.dtcCount === 0 ? 'No DTCs' : `${item.dtcCount} DTC${item.dtcCount > 1 ? 's' : ''}`}
         </Text>
+        {item.messageCount > 0 && (
+          <Text className="text-brand-muted font-mono text-xs">
+            {item.messageCount} msg{item.messageCount !== 1 ? 's' : ''}
+          </Text>
+        )}
         {item.hasInterpretation && (
           <Text className="text-brand-teal font-mono text-xs">AI interpreted</Text>
         )}

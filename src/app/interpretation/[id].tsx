@@ -10,6 +10,7 @@ import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCodeCard';
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
 import type { ObdParameter } from '@/domain/entities/obd-parameter';
+import type { ChatMessage } from '@/domain/entities/chat-message';
 
 function ParameterRow({ param }: { param: ObdParameter }) {
   return (
@@ -17,6 +18,30 @@ function ParameterRow({ param }: { param: ObdParameter }) {
       <Text className="text-brand-muted font-mono text-sm">{param.name}</Text>
       <Text className="text-brand-text font-mono text-sm">
         {param.value} {param.unit}
+      </Text>
+    </View>
+  );
+}
+
+function ChatBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === 'user';
+  return (
+    <View className={`mb-2 ${isUser ? 'items-end' : 'items-start'}`}>
+      <View
+        className={`rounded-2xl px-3 py-2 max-w-[85%] ${
+          isUser ? 'bg-brand-teal' : 'bg-brand-surface'
+        }`}
+      >
+        <Text
+          className={`font-mono text-sm leading-5 ${
+            isUser ? 'text-brand-bg' : 'text-brand-text'
+          }`}
+        >
+          {message.content}
+        </Text>
+      </View>
+      <Text className="text-brand-muted font-mono text-xs mt-0.5 px-1">
+        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </Text>
     </View>
   );
@@ -107,6 +132,17 @@ export default function InterpretationScreen() {
                 {params.map((param) => (
                   <ParameterRow key={param.pid} param={param} />
                 ))}
+              </View>
+            )}
+
+            {session.messages.length > 0 && (
+              <View className="mt-6">
+                <SectionHeader title={`Chat History (${session.messages.length})`} />
+                <View className="mt-2">
+                  {session.messages.map((msg) => (
+                    <ChatBubble key={msg.id} message={msg} />
+                  ))}
+                </View>
               </View>
             )}
           </>
