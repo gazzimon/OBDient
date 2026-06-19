@@ -128,8 +128,8 @@ export const PID_DEFINITIONS: Readonly<Record<PidId, PidDefinition>> = {
     max: 99.2,
     expectedResponseBytes: 1,
     alerts: [
-      { severity: 'warning', condition: 'above', value: 25 },
-      { severity: 'warning', condition: 'below', value: -25 },
+      { severity: 'warning', condition: 'above', value: 15 },
+      { severity: 'warning', condition: 'below', value: -15 },
     ],
   },
   FUEL_TRIM_LONG: {
@@ -141,8 +141,8 @@ export const PID_DEFINITIONS: Readonly<Record<PidId, PidDefinition>> = {
     max: 99.2,
     expectedResponseBytes: 1,
     alerts: [
-      { severity: 'warning', condition: 'above', value: 25 },
-      { severity: 'warning', condition: 'below', value: -25 },
+      { severity: 'warning', condition: 'above', value: 15 },
+      { severity: 'warning', condition: 'below', value: -15 },
     ],
   },
   TIMING_ADVANCE: {

@@ -16,7 +16,12 @@ export class ChatWithQVACUseCase {
 
   async execute(input: ChatWithQVACInput): Promise<LLMInterpretationResult> {
     const systemContext = this.buildSystemContext(input);
-    return this.llmRepo.chat({ systemContext, history: input.history });
+    return this.llmRepo.chat({
+      systemContext,
+      history: input.history,
+      troubleCodes: input.troubleCodes,
+      parameters: input.parameters,
+    });
   }
 
   private buildSystemContext(input: ChatWithQVACInput): string {
@@ -42,6 +47,16 @@ export class ChatWithQVACUseCase {
           const alert = param.alert ? ` ⚠️ ${param.alert.severity.toUpperCase()}: ${param.alert.message}` : '';
           lines.push(`  ${param.name}: ${param.value.toFixed(1)} ${param.unit}${alert}`);
         }
+      }
+
+      // Contextual battery check: low voltage while engine is running
+      const rpm = input.parameters['RPM'];
+      const voltage = input.parameters['VOLTAGE'];
+      if (rpm && voltage && rpm.value > 400 && voltage.value < 13.2 && !voltage.alert) {
+        lines.push(
+          `  ⚠️ NOTE: Battery voltage (${voltage.value.toFixed(1)}V) is low for a running engine. ` +
+          `Expected 13.5–14.5V — possible alternator underperformance.`,
+        );
       }
     }
 

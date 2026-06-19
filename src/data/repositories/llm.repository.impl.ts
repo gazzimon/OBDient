@@ -68,21 +68,51 @@ export class LLMRepositoryImpl implements ILLMRepository {
 
   async chat(request: LLMChatRequest): Promise<LLMInterpretationResult> {
     try {
-      // Extract last user message as retrieval query for SHIMI
+      const primaryDtcId = request.troubleCodes[0]?.code;
       const lastUserTurn = [...request.history].reverse().find((t) => t.role === 'user');
-      const query = lastUserTurn?.content ?? 'general vehicle health check';
-      const localSnippets = await shimiDataSource.search(undefined, query, 4);
+      const userQuery = lastUserTurn?.content ?? '';
 
-      // Inject knowledge snippets into system context if found
-      const knowledgeBlock = localSnippets.length > 0
-        ? `\n\nRelevant knowledge:\n${localSnippets.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`
+      let snippets: string[] = [];
+
+      if (primaryDtcId) {
+        // DTCs present: full SHIMI + SKOS pipeline, max 3 snippets to keep context small
+        const ontologyExpansion = retrievalContext(primaryDtcId)
+          .map((c) => c.label)
+          .join('; ');
+        const diagnosticQuery = this.buildRetrievalQuery(request.parameters, request.troubleCodes);
+        const expandedQuery = [userQuery, diagnosticQuery, ontologyExpansion]
+          .filter(Boolean)
+          .join('; ');
+        snippets = await shimiDataSource.search(primaryDtcId, expandedQuery, 3);
+
+        // Pattern matches only when DTCs are present and there are active alerts
+        const patterns = evaluatePatterns(
+          hypercoreKnowledge.getPatterns(),
+          request.troubleCodes,
+          request.parameters,
+        ).slice(0, 1).map((m) => `Pattern: ${m.conclusion}`);
+        snippets = [...snippets, ...patterns];
+      }
+      // Without DTCs: skip SHIMI entirely — RAG would return irrelevant English content
+      // that overrides the user's language and confuses the model.
+      // The live sensor data in systemContext is sufficient for open questions.
+
+      // Truncate each snippet to 300 chars to cap total context size
+      const knowledgeBlock = snippets.length > 0
+        ? `\n\nRelevant diagnostic knowledge:\n${snippets
+            .map((s, i) => `[${i + 1}] ${s.slice(0, 300)}`)
+            .join('\n')}`
         : '';
 
-      const enrichedContext = request.systemContext + knowledgeBlock;
+      // Language reminder goes AFTER knowledge so it's the last instruction before history
+      const languageReminder = '\n\nRespond in the same language as the last user message.';
+
+      const enrichedContext = request.systemContext + knowledgeBlock + languageReminder;
       const result = await qvacSDK.chat(enrichedContext, request.history);
       return { ...result, isAiGenerated: true };
     } catch (err) {
       if (isQvacError(err)) {
+        console.error('[QVAC] chat() failed:', err);
         return {
           text: 'QVAC is not available. Load the model in Settings to enable the assistant.',
           generatedAt: new Date(),

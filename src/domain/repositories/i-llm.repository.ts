@@ -23,10 +23,11 @@ export interface ChatTurn {
 }
 
 export interface LLMChatRequest {
-  // Full back-and-forth so far (not including the system prompt)
   readonly history: readonly ChatTurn[];
-  // Injected once as the opening context (vehicle + DTCs)
   readonly systemContext: string;
+  // Passed to the retrieval layer so SHIMI + SKOS can activate on active DTCs
+  readonly troubleCodes: readonly TroubleCode[];
+  readonly parameters: ObdParameterSnapshot;
 }
 
 export interface ILLMRepository {
