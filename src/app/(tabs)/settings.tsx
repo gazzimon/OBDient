@@ -16,6 +16,7 @@ import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
+import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -54,8 +55,14 @@ export default function SettingsScreen() {
 
   const claudeApiKey    = useSettingsStore((s) => s.claudeApiKey);
   const setClaudeApiKey = useSettingsStore((s) => s.setClaudeApiKey);
-  const [apiKeyInput, setApiKeyInput]   = useState(claudeApiKey ?? '');
-  const [showApiKey, setShowApiKey]     = useState(false);
+  const [apiKeyInput, setApiKeyInput]     = useState(claudeApiKey ?? '');
+  const [showApiKey, setShowApiKey]       = useState(false);
+  const [knowledgeCount, setKnowledgeCount] = useState(claudeKnowledge.count());
+
+  // Refresh knowledge count when screen gains focus (entries grow during chat)
+  useEffect(() => {
+    setKnowledgeCount(claudeKnowledge.count());
+  }, [claudeApiKey]);
 
   const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
@@ -330,6 +337,19 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+
+          {knowledgeCount > 0 && (
+            <View className="flex-row items-center justify-between mb-3 px-1">
+              <Text className="text-brand-muted font-mono text-xs">
+                Knowledge accumulated
+              </Text>
+              <View className="px-2 py-0.5 rounded-md border border-brand-teal">
+                <Text className="text-brand-teal font-mono text-xs">
+                  {knowledgeCount} entr{knowledgeCount === 1 ? 'y' : 'ies'}
+                </Text>
+              </View>
+            </View>
+          )}
 
           <View className="flex-row items-center gap-2">
             <TextInput
