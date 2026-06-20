@@ -249,6 +249,9 @@ ELM327 (BT) → OBDRepositoryImpl → obdStore
 **OBD-II adapter:** Standard ELM327 Bluetooth (Classic, not BLE-only). Pair in
 Android Settings → Bluetooth first (typical PIN: `1234` or `0000`).
 
+> Tested with this [ELM327 Bluetooth OBD-II adapter](https://www.amazon.com/-/es/Bluetooth-herramienta-diagn%C3%B3stico-autom%C3%A1tico-verificaci%C3%B3n/dp/B07CP5ZJVQ)
+> (ASIN `B07CP5ZJVQ`). Any Bluetooth Classic ELM327 clone should work.
+
 ---
 
 ## Prerequisites
