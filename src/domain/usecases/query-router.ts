@@ -8,13 +8,19 @@
 
 export type QueryType = 'diagnostic' | 'general';
 
+// Stem-based: a leading word boundary avoids mid-word matches, but NO trailing
+// boundary so Spanish plurals/inflections also match (sensor → "sensores",
+// código → "códigos", batería → "baterías", voltaje → "voltajes", etc.).
+// When in doubt we lean 'diagnostic' — CARpsy (on-device, has sensor data) is the
+// safe default; Claude is the path we want to gate.
 const DIAGNOSTIC_PATTERNS: RegExp[] = [
-  /[Pp]\d{4}/,                     // P0300, P0171, etc.
-  /\b(DTC|código|code|fault|error|fallo|falla)\b/i,
-  /\b(sensor|RPM|rpm|TPS|MAF|MAP|O2|oxígeno|oxigeno|catalizador|catalyst)\b/i,
-  /\b(trim|timing|ignición|ignicion|mezcla|mixture|inyector|injector)\b/i,
-  /\b(temperatura|temperature|coolant|refrigerante|batería|battery|voltaje|voltage)\b/i,
-  /\b(arrancar|starting|stall|vibra|vibrat|tiembla|misfire)\b/i,
+  /[Pp]\d{4}/,                                                   // P0300, P0171...
+  /\b(dtc|c[oó]digo|code|fault|error|fallo|falla)/i,
+  /\b(sensor|rpm|tps|maf|map|o2|ox[ií]geno|cataliz|catalyst)/i,
+  /\b(trim|timing|ignici|mezcla|mixture|inyect|injector)/i,
+  /\b(temperatur|coolant|refrigerante|bater[ií]a|battery|voltaj|voltage)/i,
+  /\b(arranc|start|stall|vibra|tiembla|misfire|humo|ruido|consum)/i,
+  /\b(par[aá]metro|lectura|medici|valores|diagn[oó]stic)/i,
 ];
 
 export function classifyQuery(userText: string, hasDtcs: boolean): QueryType {

@@ -67,6 +67,9 @@ export class QvacSDKDataSource {
   private modelId: string | null = null;
   private loadingPromise: Promise<void> | null = null;
   private loadProgress = 0;
+  // Remembered so the model can be reloaded after a worklet crash (OOM/LMK),
+  // without the user having to re-pick the source in Settings.
+  private lastModelSrc: string = DEFAULT_MODEL;
 
   // Download and load the model into memory.
   // Safe to call multiple times — only loads once.
@@ -80,6 +83,7 @@ export class QvacSDKDataSource {
     if (this.loadingPromise !== null) return this.loadingPromise;
 
     const modelSrc = (customModelSrc ?? '').trim() || DEFAULT_MODEL;
+    this.lastModelSrc = modelSrc;
 
     this.loadingPromise = (async () => {
       try {
@@ -96,6 +100,43 @@ export class QvacSDKDataSource {
     })();
 
     return this.loadingPromise;
+  }
+
+  // Force a clean reload after a worklet crash. The model file is already cached
+  // on disk, so this loads it back into RAM without re-downloading.
+  private async reloadModel(): Promise<void> {
+    this.modelId = null;
+    this.loadingPromise = null;
+    this.modelId = await loadModel({ modelSrc: this.lastModelSrc, modelType: 'llamacpp-completion' });
+    this.loadProgress = 1;
+  }
+
+  // Run a streaming completion with one automatic reload-and-retry. The bare-kit
+  // worklet can be killed by Android (memory pressure) between calls, leaving a
+  // stale modelId; on failure we reload the model once and retry before giving up.
+  private async streamCompletion(
+    llmHistory: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  ): Promise<string> {
+    const run = async (): Promise<string> => {
+      let text = '';
+      const result = completion({ modelId: this.modelId!, history: llmHistory, stream: true });
+      for await (const token of result.tokenStream) {
+        text += token;
+      }
+      return text;
+    };
+
+    try {
+      return await run();
+    } catch (firstErr) {
+      console.warn('[QVAC] inference failed — reloading model and retrying once:', firstErr);
+      try {
+        await this.reloadModel();
+        return await run();
+      } catch (secondErr) {
+        throw new QvacRequestError(0, `On-device inference failed after reload: ${String(secondErr)}`);
+      }
+    }
   }
 
   isLoaded(): boolean {
@@ -143,15 +184,7 @@ export class QvacSDKDataSource {
       ...cappedHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     ];
 
-    let text = '';
-    try {
-      const result = completion({ modelId: this.modelId, history: llmHistory, stream: true });
-      for await (const token of result.tokenStream) {
-        text += token;
-      }
-    } catch (err) {
-      throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
-    }
+    const text = await this.streamCompletion(llmHistory);
 
     const trimmed = stripModelArtifacts(stripThinkingTokens(text));
     if (!trimmed) throw new QvacRequestError(0, 'QVAC returned empty response');
@@ -182,15 +215,7 @@ export class QvacSDKDataSource {
       { role: 'user' as const,   content: userMessage },
     ];
 
-    let text = '';
-    try {
-      const result = completion({ modelId: this.modelId, history, stream: true });
-      for await (const token of result.tokenStream) {
-        text += token;
-      }
-    } catch (err) {
-      throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
-    }
+    const text = await this.streamCompletion(history);
 
     const trimmed = stripThinkingTokens(text);
     if (!trimmed) {
