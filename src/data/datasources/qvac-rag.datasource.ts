@@ -24,6 +24,10 @@ import { OBD_KNOWLEDGE, KNOWLEDGE_VERSION } from '@/data/knowledge/obd-knowledge
 // Workspace name is versioned: bumping KNOWLEDGE_VERSION re-ingests cleanly.
 const WORKSPACE = `obd-knowledge-v${KNOWLEDGE_VERSION}`;
 
+// Separate workspace for Claude-learned answers. Kept apart from the curated
+// corpus so provenance stays clean: hits here are unverified (single-source).
+const CLAUDE_WORKSPACE = 'claude-knowledge-v1';
+
 export class QvacRagDataSource {
   private modelId: string | null = null;
   private initPromise: Promise<void> | null = null;
@@ -74,6 +78,42 @@ export class QvacRagDataSource {
         query,
         topK,
         workspace: WORKSPACE,
+      });
+      return results.map((r) => r.content);
+    } catch {
+      return [];
+    }
+  }
+
+  // --- Claude-learned knowledge (separate, unverified workspace) -----------
+
+  // Ingest a single Claude answer so it becomes semantically retrievable.
+  // Best-effort: if the embedding model isn't loaded yet, silently skip — the
+  // answer still lives in claudeKnowledge (MMKV) and stays keyword-searchable.
+  async ingestClaude(text: string): Promise<void> {
+    if (this.modelId === null || !text.trim()) return;
+    try {
+      await ragIngest({
+        modelId: this.modelId,
+        documents: [text],
+        workspace: CLAUDE_WORKSPACE,
+      });
+    } catch {
+      // ignore — keyword fallback covers this entry
+    }
+  }
+
+  // Semantic search over Claude-learned answers. Returns content strings; the
+  // caller maps them back to claudeKnowledge entries (which is also the source
+  // of truth that filters out rejected/evicted answers).
+  async searchClaude(query: string, topK = 2): Promise<string[]> {
+    if (this.modelId === null) return [];
+    try {
+      const results = await ragSearch({
+        modelId: this.modelId,
+        query,
+        topK,
+        workspace: CLAUDE_WORKSPACE,
       });
       return results.map((r) => r.content);
     } catch {

@@ -3,6 +3,7 @@
 // SHIMI integration added in Step 3.
 
 import { createMMKV } from 'react-native-mmkv';
+import { qvacRag } from './qvac-rag.datasource';
 
 const mmkv = createMMKV({ id: 'claude-knowledge' });
 const ENTRIES_KEY = 'entries';
@@ -28,6 +29,8 @@ export class ClaudeKnowledgeDataSource {
     this.entries.unshift({ query, answer, storedAt: new Date().toISOString(), confirmations: 0 });
     if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(0, MAX_ENTRIES);
     this.persist();
+    // Make the answer semantically retrievable (best-effort; keyword still works).
+    await qvacRag.ingestClaude(answer);
   }
 
   /** Human feedback 👍 — mark a Claude-origin entry as confirmed.
@@ -55,6 +58,28 @@ export class ClaudeKnowledgeDataSource {
   // Returns the answer texts of the best-matching stored entries.
   search(query: string, topK = 3): string[] {
     return this.searchEntries(query, topK).map((e) => e.answer);
+  }
+
+  // Semantic search via embeddings, mapped back to entries so HITL targeting
+  // (the `query` key) is preserved. Falls back to keyword search when the
+  // embedding model isn't ready or returns nothing.
+  //
+  // MMKV is the source of truth: an answer that was rejected/evicted has no
+  // backing entry, so it's filtered out here even if it lingers in the RAG index.
+  async searchEntriesSemantic(query: string, topK = 3): Promise<ClaudeKnowledgeEntry[]> {
+    const hits = await qvacRag.searchClaude(query, topK);
+    if (hits.length === 0) return this.searchEntries(query, topK);
+
+    const seen = new Set<string>();
+    const entries: ClaudeKnowledgeEntry[] = [];
+    for (const content of hits) {
+      const entry = this.entries.find((e) => e.answer === content);
+      if (entry && !seen.has(entry.query)) {
+        seen.add(entry.query);
+        entries.push(entry);
+      }
+    }
+    return entries.length > 0 ? entries : this.searchEntries(query, topK);
   }
 
   // Same as search() but returns full entries, so the caller can target a

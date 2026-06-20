@@ -35,7 +35,7 @@ export class ShimiDataSource {
    *  NOTE: flat merge — used by interpret(). Chat uses searchWithProvenance(). */
   async search(dtcId: string | undefined, query: string, topK = 6): Promise<string[]> {
     try {
-      const claudeResults = claudeKnowledge.search(query, 2);
+      const claudeResults = (await claudeKnowledge.searchEntriesSemantic(query, 2)).map((e) => e.answer);
       const shimiResults = dtcId ? shimiTree.search(dtcId, topK) : [];
       const ragResults = await qvacRag.search(query, topK);
 
@@ -64,8 +64,9 @@ export class ShimiDataSource {
     topK = 4,
   ): Promise<ProvenanceResult> {
     try {
-      // Unverified: Claude-origin answers (kept with their query key for HITL).
-      const unverified = claudeKnowledge.searchEntries(query, 2).map((e) => ({
+      // Unverified: Claude-origin answers, retrieved semantically (keyword fallback
+      // inside). Kept with their query key for HITL feedback targeting.
+      const unverified = (await claudeKnowledge.searchEntriesSemantic(query, 2)).map((e) => ({
         content: e.answer,
         query: e.query,
       }));
