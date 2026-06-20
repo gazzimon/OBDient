@@ -19,6 +19,7 @@ export function createChatMessage(
     role,
     content,
     createdAt: new Date(),
-    source,
+    // Omit `source` entirely when undefined (exactOptionalPropertyTypes).
+    ...(source ? { source } : {}),
   };
 }

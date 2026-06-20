@@ -30,6 +30,12 @@ export class ClaudeKnowledgeDataSource {
   // Keyword-based search — no embeddings required.
   // Returns the answer texts of the best-matching stored entries.
   search(query: string, topK = 3): string[] {
+    return this.searchEntries(query, topK).map((e) => e.answer);
+  }
+
+  // Same as search() but returns full entries, so the caller can target a
+  // specific entry for human feedback (confirm/reject) by its `query` key.
+  searchEntries(query: string, topK = 3): ClaudeKnowledgeEntry[] {
     const words = query
       .toLowerCase()
       .split(/\s+/)
@@ -41,12 +47,12 @@ export class ClaudeKnowledgeDataSource {
       .map((e) => {
         const text = `${e.query} ${e.answer}`.toLowerCase();
         const score = words.filter((w) => text.includes(w)).length;
-        return { answer: e.answer, score };
+        return { entry: e, score };
       })
       .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK)
-      .map((s) => s.answer);
+      .map((s) => s.entry);
   }
 
   getAll(): ClaudeKnowledgeEntry[] {

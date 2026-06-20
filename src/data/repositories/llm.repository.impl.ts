@@ -72,38 +72,48 @@ export class LLMRepositoryImpl implements ILLMRepository {
       const lastUserTurn = [...request.history].reverse().find((t) => t.role === 'user');
       const userQuery = lastUserTurn?.content ?? '';
 
-      let snippets: string[] = [];
-
-      if (primaryDtcId) {
-        // DTCs present: full SHIMI + SKOS pipeline, max 3 snippets to keep context small
-        const ontologyExpansion = retrievalContext(primaryDtcId)
-          .map((c) => c.label)
-          .join('; ');
-        const diagnosticQuery = this.buildRetrievalQuery(request.parameters, request.troubleCodes);
-        const expandedQuery = [userQuery, diagnosticQuery, ontologyExpansion]
-          .filter(Boolean)
-          .join('; ');
-        snippets = await shimiDataSource.search(primaryDtcId, expandedQuery, 3);
-
-        // Pattern matches only when DTCs are present and there are active alerts
-        const patterns = evaluatePatterns(
-          hypercoreKnowledge.getPatterns(),
-          request.troubleCodes,
-          request.parameters,
-        ).slice(0, 1).map((m) => `Pattern: ${m.conclusion}`);
-        snippets = [...snippets, ...patterns];
-      }
-      // Without DTCs: skip SHIMI entirely — RAG would return irrelevant English content
-      // that overrides the user's language and confuses the model.
-      // The live sensor data in systemContext is sufficient for open questions.
-
-      // Truncate each snippet to 300 chars to cap total context size
-      const knowledgeBlock = snippets.length > 0
-        ? `\n\nRelevant diagnostic knowledge:\n${snippets
-            .map((s, i) => `[${i + 1}] ${s.slice(0, 300)}`)
-            .join('\n')}`
+      // Build the retrieval query (SKOS-expanded when a DTC is present).
+      const diagnosticQuery = this.buildRetrievalQuery(request.parameters, request.troubleCodes);
+      const ontologyExpansion = primaryDtcId
+        ? retrievalContext(primaryDtcId).map((c) => c.label).join('; ')
         : '';
+      const expandedQuery = [userQuery, diagnosticQuery, ontologyExpansion]
+        .filter(Boolean)
+        .join('; ');
 
+      // Provenance-aware retrieval: curated (trusted) vs Claude-origin (unverified).
+      const retrieval = await shimiDataSource.searchWithProvenance(primaryDtcId, expandedQuery, 3);
+
+      // Patterns are curated/rule-based → count as verified. Only with DTCs present.
+      const patterns = primaryDtcId
+        ? evaluatePatterns(
+            hypercoreKnowledge.getPatterns(),
+            request.troubleCodes,
+            request.parameters,
+          ).slice(0, 1).map((m) => `Pattern: ${m.conclusion}`)
+        : [];
+
+      const verified = [...retrieval.verified, ...patterns];
+      const unverified = retrieval.unverified;
+
+      // Two clearly-labelled sections: the model must trust verified knowledge,
+      // and treat unverified Claude suggestions as hypotheses (not ground truth).
+      const cap = (s: string) => s.slice(0, 300);
+      const sections: string[] = [];
+      if (verified.length > 0) {
+        sections.push(
+          `Verified diagnostic knowledge (trusted — base your diagnosis on this):\n` +
+            verified.map((s, i) => `[V${i + 1}] ${cap(s)}`).join('\n'),
+        );
+      }
+      if (unverified.length > 0) {
+        sections.push(
+          `Unverified suggestions (AI-generated, NOT yet confirmed — treat as hypotheses, ` +
+            `mention uncertainty, do not state as fact):\n` +
+            unverified.map((u, i) => `[U${i + 1}] ${cap(u.content)}`).join('\n'),
+        );
+      }
+      const knowledgeBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
 
       const enrichedContext = request.systemContext + knowledgeBlock;
       const result = await qvacSDK.chat(enrichedContext, request.history);
