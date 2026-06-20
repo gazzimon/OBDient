@@ -94,12 +94,17 @@ effectively gets smarter without retraining its weights.
 
 | Model | Role | Size | Runs |
 |-------|------|------|------|
-| **CARpsy** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
+| **[CARpsy](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
 | **EmbeddingGemma 300M** (4-bit) | RAG vector embeddings | ~300 MB RAM | On-device via QVAC SDK |
 | **Claude Haiku** | General questions + quality eval | — | Cloud (optional) |
 
 Primary AI path (diagnostics, DTC analysis) is 100% on-device. Cloud is opt-in for
 general questions and background quality evaluation only.
+
+> **CARpsy** is OBDient's own fine-tuned model — a Qwen3-0.6B specialised for OBD-II
+> diagnostics, published on Hugging Face:
+> [`gazzimon/CARpsy-v2-qwen3-0.6b-GGUF`](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF).
+> It's downloaded once on first model load and cached on-device by the QVAC SDK.
 
 ---
 
@@ -334,6 +339,32 @@ Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — runs fully on-devic
 
 > Cloud (Claude API) is an optional enhancement layer only — all mandatory QVAC
 > inference paths use the on-device SDK exclusively.
+
+---
+
+## Roadmap — toward a self-sufficient CARpsy
+
+The long-term goal is for the on-device model to handle the diagnostic domain on its
+own, so the cloud agent (Claude) becomes rarely needed. The strategy separates two
+things: **knowledge** (what CARpsy knows — grows with use) and **reasoning** (the fixed
+0.6B weights — only fine-tuning moves them). The cloud reduces calls; fine-tuning
+raises the floor; **independent verification** (a human, and the car's own physical
+outcome) keeps unverified content from gaining false authority.
+
+| Step | What | Status |
+|------|------|--------|
+| 1 | Separate *verified* (curated) from *unverified* (Claude) knowledge in the prompt | ✅ Done |
+| 2 | Human feedback 👍/👎 that moves SHIMI/Claude confidence | ✅ Done |
+| 3 | Semantic retrieval of Claude-learned answers (RAG workspace) | ✅ Done |
+| 4 | Ground-truth outcome — did the repair work? (passive DTC-recurrence detection) | 🔲 Planned |
+| 5 | Confidence-gated promotion — only verified knowledge becomes "trusted" | 🔲 Planned |
+| 6 | Dependency metric — % of queries still escalating to Claude | 🔲 Planned |
+| 7 | Fine-tuning loop — distill verified Q→A pairs into CARpsy's weights | 🔲 Planned |
+
+The virtuous cycle: **Claude teaches → human/car verifies → SHIMI accumulates → CARpsy
+is retrained → Claude is needed less → repeat.**
+
+📄 Full detail, rationale, and the three "asymptotes" in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ---
 
