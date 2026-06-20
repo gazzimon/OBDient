@@ -2,6 +2,8 @@
 // All repositories wire themselves to their own datasource singletons.
 
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
+import { claudeAPI } from '@/data/datasources/claude-api.datasource';
+import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OBDRepositoryImpl } from '@/data/repositories/obd.repository.impl';
 import { LLMRepositoryImpl } from '@/data/repositories/llm.repository.impl';
@@ -12,6 +14,7 @@ import { ReadTroubleCodesUseCase } from '@/domain/usecases/read-trouble-codes';
 import { ClearTroubleCodesUseCase } from '@/domain/usecases/clear-trouble-codes';
 import { InterpretWithQVACUseCase } from '@/domain/usecases/interpret-with-qvac';
 import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
+import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 // Initialize Hypercore network conditionally based on persisted user preference.
@@ -22,9 +25,10 @@ void (async () => {
   await hypercoreKnowledge.initialize({ enabled: knowledgeNetworkEnabled });
 })();
 
-const obdRepo = new OBDRepositoryImpl();
-const llmRepo = new LLMRepositoryImpl();
+const obdRepo    = new OBDRepositoryImpl();
+const llmRepo    = new LLMRepositoryImpl();
 const reportRepo = new ReportRepositoryImpl();
+const carpsy     = new ChatWithQVACUseCase(llmRepo);
 
 export const container = {
   // Direct read access for the reports screen (list/detail/delete are queries,
@@ -37,7 +41,8 @@ export const container = {
   readTroubleCodes: new ReadTroubleCodesUseCase(obdRepo),
   clearTroubleCodes: new ClearTroubleCodesUseCase(obdRepo),
   interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
-  chatWithQVAC: new ChatWithQVACUseCase(llmRepo),
+  chatWithQVAC: carpsy,
+  multiAgentChat: new MultiAgentChatUseCase(carpsy, claudeAPI, claudeKnowledge),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices
 } as const;

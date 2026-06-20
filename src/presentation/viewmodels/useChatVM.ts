@@ -6,6 +6,7 @@ import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { container } from '@/data/container';
 import { createChatMessage } from '@/domain/entities/chat-message';
+import type { ChatSource } from '@/domain/entities/chat-message';
 import type { ChatTurn } from '@/domain/repositories/i-llm.repository';
 
 export function useChatVM() {
@@ -36,7 +37,7 @@ export function useChatVM() {
         { role: 'user', content: userMsg.content },
       ];
 
-      const result = await container.chatWithQVAC.execute({
+      const result = await container.multiAgentChat.execute({
         vehicle,
         mileage,
         troubleCodes: codes,
@@ -44,7 +45,8 @@ export function useChatVM() {
         history,
       });
 
-      addChatMessage(createChatMessage('assistant', result.text));
+      const source: ChatSource = 'source' in result ? result.source : 'carpsy';
+      addChatMessage(createChatMessage('assistant', result.text, source));
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Chat failed');
     } finally {
@@ -58,14 +60,15 @@ export function useChatVM() {
     setChatError(null);
     setIsResponding(true);
     try {
-      const result = await container.chatWithQVAC.execute({
+      const result = await container.multiAgentChat.execute({
         vehicle,
         mileage,
         troubleCodes: codes,
         parameters,
         history: [{ role: 'user', content: prompt }],
       });
-      addChatMessage(createChatMessage('assistant', result.text));
+      const source: ChatSource = 'source' in result ? result.source : 'carpsy';
+      addChatMessage(createChatMessage('assistant', result.text, source));
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Initial assessment failed');
     } finally {

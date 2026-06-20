@@ -6,8 +6,21 @@ interface ChatBubbleProps {
   message: ChatMessage;
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  carpsy: 'QVAC',
+  claude: 'Claude',
+};
+
+const SOURCE_COLOR: Record<string, string> = {
+  carpsy: 'text-brand-teal',
+  claude: 'text-[#7C6AFE]',
+};
+
 export function ChatBubble({ message }: ChatBubbleProps) {
   const isUser = message.role === 'user';
+  const sourceKey = message.source ?? 'carpsy';
+  const agentLabel = SOURCE_LABEL[sourceKey] ?? 'QVAC';
+  const agentColor = SOURCE_COLOR[sourceKey] ?? 'text-brand-teal';
 
   return (
     <View className={`mb-3 ${isUser ? 'items-end' : 'items-start'}`}>
@@ -19,7 +32,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         }`}
       >
         {!isUser && (
-          <Text className="text-brand-teal font-mono text-xs mb-1">QVAC</Text>
+          <Text className={`font-mono text-xs mb-1 ${agentColor}`}>{agentLabel}</Text>
         )}
         <Text
           className={`font-mono text-sm leading-5 ${
