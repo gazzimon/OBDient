@@ -48,16 +48,6 @@ export class ChatWithQVACUseCase {
           lines.push(`  ${param.name}: ${param.value.toFixed(1)} ${param.unit}${alert}`);
         }
       }
-
-      // Contextual battery check: low voltage while engine is running
-      const rpm = input.parameters['RPM'];
-      const voltage = input.parameters['VOLTAGE'];
-      if (rpm && voltage && rpm.value > 400 && voltage.value < 13.2 && !voltage.alert) {
-        lines.push(
-          `  ⚠️ NOTE: Battery voltage (${voltage.value.toFixed(1)}V) is low for a running engine. ` +
-          `Expected 13.5–14.5V — possible alternator underperformance.`,
-        );
-      }
     }
 
     if (input.troubleCodes.length > 0) {

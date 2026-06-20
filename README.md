@@ -184,8 +184,9 @@ shared DHT topic (`obdient-rag-v1`) and replicate feeds without a central server
 | Relative Throttle | `0145` | % |
 | Ambient Temperature | `0146` | °C |
 
-Contextual alerts: battery voltage check while engine running (expected 13.5–14.5V),
-LTFT/STFT ±15%, catalyst temp >900°C, fuel level <10%.
+Alert thresholds: LTFT/STFT ±15%, catalyst temp >900°C, fuel level <10%, battery
+voltage out of range. Alerts are evaluated declaratively per-PID in
+`src/core/constants/pids.ts` — never hardcoded into the model's prompt.
 
 ---
 
