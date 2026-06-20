@@ -15,8 +15,9 @@ export interface EvaluationResult {
 
 export class ClaudeAPIDataSource {
   isConfigured(): boolean {
-    const key = useSettingsStore.getState().claudeApiKey ?? '';
-    return key.trim().length > 0;
+    const runtimeKey = useSettingsStore.getState().claudeApiKey ?? '';
+    const envKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
+    return runtimeKey.trim().length > 0 || envKey.trim().length > 0;
   }
 
   // Answers a general automotive question using Claude.
@@ -89,9 +90,12 @@ export class ClaudeAPIDataSource {
   }
 
   private getKey(): string {
-    const key = useSettingsStore.getState().claudeApiKey ?? '';
-    if (!key.trim()) throw new Error('Claude API key not configured. Add it in Settings → Claude AI.');
-    return key.trim();
+    // Runtime key (Settings UI) takes priority over the build-time env var.
+    const runtimeKey = useSettingsStore.getState().claudeApiKey ?? '';
+    const envKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
+    const key = runtimeKey.trim() || envKey.trim();
+    if (!key) throw new Error('Claude API key not configured. Add it in Settings → Claude AI.');
+    return key;
   }
 
   private headers(apiKey: string): Record<string, string> {
