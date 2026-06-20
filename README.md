@@ -2,9 +2,8 @@
 
 **An on-device AI co-pilot for your car.** OBDient connects to a standard ELM327
 OBD-II adapter over Bluetooth, reads live engine data and fault codes, and explains
-what's going on in plain language — with all AI inference running **100% locally on
-the phone** via the [QVAC SDK](https://docs.qvac.tether.io/). No cloud, no internet
-required for inference, no data leaving the device.
+what's going on in plain language — with primary AI inference running **100% locally
+on the phone** via the [QVAC SDK](https://docs.qvac.tether.io/).
 
 > Built for the Tether QVAC Hackathon — **Mobile track**.
 
@@ -13,153 +12,180 @@ required for inference, no data leaving the device.
 ## What it does
 
 - Connects to any ELM327 Bluetooth OBD-II adapter (Bluetooth Classic / SPP).
-- Streams real-time parameters (RPM, coolant temp, speed, battery voltage, …) on a live dashboard.
-- Reads and clears DTC trouble codes, with severity classification.
-- Generates a natural-language diagnostic assessment **on-device** with QVAC.
-- Conversational chat with QVAC inside the Diagnostics screen — ask follow-up questions about active faults.
-- Voice output and voice commands (hands-free while driving).
-- Decodes the VIN (make / model / year / plant) and cross-references vehicle data.
-- Auto-disconnects after a configurable idle period when RPM = 0, protecting the car battery.
-- Saves diagnostic sessions to a local SQLite database for later review.
-- **Distributed RAG** — joins a P2P knowledge network (Hypercore + Hyperswarm) to share and receive anonymous diagnostic patterns from other OBDient instances, with no server and no PII.
+- Streams **20 real-time OBD-II parameters** (RPM, coolant, speed, fuel trims, O2 sensors, catalyst temp, timing advance, …) on a live dashboard.
+- Reads and clears DTC trouble codes with severity classification.
+- Generates a natural-language diagnostic assessment **on-device** with CARpsy (Qwen3-0.6B, fine-tuned).
+- **Multi-agent conversational chat**: diagnostic queries → CARpsy (on-device, private); general automotive questions → Claude API (cloud).
+- **4-layer knowledge retrieval** on every response: Claude-learned knowledge → SHIMI hierarchical tree → QVAC RAG vectors → Hypercore patterns.
+- **Quality evaluator**: Claude silently scores CARpsy responses in background and stores corrections into SHIMI — the model gets smarter over sessions without retraining.
+- Voice output and hands-free alerts while driving.
+- Decodes VIN (make / model / year / plant) via local lookup and Vincario API.
+- Auto-disconnects after configurable idle period when RPM = 0, protecting battery.
+- **Persistent sessions**: full conversation history saved to local SQLite for later review in Reports.
+- **Distributed RAG** — P2P knowledge network (Hypercore + Hyperswarm) shares anonymous diagnostic patterns across devices with no server and no PII.
 
-All inference happens on the phone. The car's data never leaves the device.
+The car's data never leaves the device without explicit consent.
 
 ---
 
-## How the AI runs (QVAC, on-device)
+## Intelligence architecture
 
-OBDient uses **`@qvac/sdk`** for all AI inference. The model is downloaded once and
-loaded into RAM directly on the device; every diagnostic interpretation is a local
-`completion()` call — there is **no inference server and no network round-trip**.
+### Two-agent system
 
-- Integration entry point: `src/data/datasources/qvac-sdk.datasource.ts`
-  (`loadModel` → `completion` → `unloadModel`).
-- Wired through clean architecture: `InterpretWithQVACUseCase` → `ILLMRepository`
-  → `LLMRepositoryImpl` → `qvacSDK`.
-- Model is loaded from **Settings → QVAC Assistant → Load model** and kept warm for
-  fast responses. Once loaded, an **Unload & reload** button lets you swap models
-  without restarting the app.
-- If the model isn't loaded yet, a deterministic rule-based fallback keeps the app
-  safe and usable.
-- Default model: `LLAMA_3_2_1B_INST_Q4_0` (4-bit, ~1B params) for low-RAM phones.
-- Custom models: Settings accepts any HTTPS URL, local file path, or `pear://` key
-  pointing to a fine-tuned GGUF — the custom source is persisted and passed to
-  `initialize()` on every load.
+```
+User message
+      │
+      ▼
+ QueryRouter  ← deterministic, no ML
+      │
+      ├── DTCs / sensor keywords / fault diagnosis
+      │       ↓
+      │   CARpsy (on-device, Qwen3-0.6B Q4_K_M)
+      │   + 4-layer knowledge retrieval
+      │   Private · Fast · Works offline
+      │
+      └── General automotive questions
+              ↓
+          Claude API (cloud, Haiku)
+          Receives: make/model/year + question only
+          Never receives: VIN, sensor readings
+              ↓
+          Answer stored in SHIMI (offline reuse)
+```
 
-> The QVAC SDK is integrated via the Expo config plugin `@qvac/sdk/expo-plugin`
-> (see `app.json`). The Bare worker bundle lives in `qvac/`.
+### 4-layer knowledge retrieval pipeline
 
-### On-device RAG
+```
+Query
+  │
+  ├─ Layer 0: Claude-learned knowledge (MMKV, keyword match)
+  │           Answers Claude already gave in past sessions
+  │
+  ├─ Layer 1: SHIMI hierarchical tree (SKOS ontology, confidence-ranked)
+  │           DTC → canonical concept → ancestors + related nodes
+  │
+  ├─ Layer 2: QVAC RAG vector search (EmbeddingGemma 300M, on-device)
+  │           Semantic similarity over OBD-II knowledge corpus
+  │
+  └─ Layer 3: Hypercore pattern evaluator
+              Rule-based patterns validated by P2P peer consensus
+```
 
-Before each interpretation, OBDient retrieves the most relevant repair knowledge
-from a local vector store and feeds it to the LLM as grounding context — all on the
-device, using QVAC's built-in RAG pipeline (`ragIngest` / `ragSearch`).
+### Quality evaluator loop
 
-- Embedding model: `EmbeddingGemma 300M` (4-bit), loaded separately from the chat LLM.
-- Knowledge corpus: a curated OBD-II DTC / repair knowledge base in
-  `src/data/knowledge/obd-knowledge.ts`, ingested once into a persistent workspace.
-- Retrieval glue: `src/data/datasources/qvac-rag.datasource.ts`; the active fault
-  codes and alerting parameters form the query, and the top matches are injected
-  into the prompt by `LLMRepositoryImpl`.
-- Graceful degradation: if the RAG index isn't ready, search returns nothing and the
-  assistant still answers from the live OBD data.
+```
+CARpsy answers a diagnostic question
+            ↓
+  Claude evaluates score 1–5 (background, non-blocking)
+            │
+    score ≥ 3 ──► log "acceptable"
+            │
+    score < 3 ──► Claude correction → stored in SHIMI Layer 0
+                  Next time, CARpsy retrieves the correct answer
+                  (even offline — it's in MMKV)
+```
 
-### Distributed RAG (Hypercore, opt-in)
+Over sessions, SHIMI grows from Claude's validated knowledge. The on-device model
+effectively gets smarter without retraining its weights.
+
+---
+
+## AI models
+
+| Model | Role | Size | Runs |
+|-------|------|------|------|
+| **CARpsy** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
+| **EmbeddingGemma 300M** (4-bit) | RAG vector embeddings | ~300 MB RAM | On-device via QVAC SDK |
+| **Claude Haiku** | General questions + quality eval | — | Cloud (optional) |
+
+Primary AI path (diagnostics, DTC analysis) is 100% on-device. Cloud is opt-in for
+general questions and background quality evaluation only.
+
+---
+
+## On-device RAG (QVAC)
+
+Before each response, OBDient retrieves relevant repair knowledge from a local vector
+store and feeds it as grounding context — no internet required.
+
+- **Embedding model**: EmbeddingGemma 300M (4-bit), loaded from Settings alongside CARpsy.
+- **Knowledge corpus**: curated OBD-II DTC knowledge in `src/data/knowledge/obd-knowledge.ts`,
+  ingested once into a persistent QVAC workspace.
+- **Retrieval**: `src/data/datasources/shimi.datasource.ts` — merges all 4 layers,
+  deduplicates, caps snippets at 300 chars each to stay within CARpsy's context window.
+- **Graceful degradation**: any layer failure returns `[]`; the assistant still answers
+  from live OBD data.
+
+---
+
+## SHIMI — confidence-weighted knowledge tree
+
+SHIMI (*Semantic Hierarchical Index with Memory Integration*) is an on-device knowledge
+graph built from the OBD-II SKOS ontology. Each node tracks a confidence score updated
+by peer confirmations and Claude quality evaluations.
+
+```
+P0300 (Random Misfire)
+  └─ misfire_random  [confidence: 0.87]
+       ├─ ignition   [confidence: 0.91]
+       ├─ fuel_system [confidence: 0.74]
+       └─ powertrain  [confidence: 0.95]
+```
+
+When a DTC is active, SHIMI returns the highest-confidence content from the entire
+subtree — not just the exact code match. This means a P0301 query also retrieves
+ignition system and fuel system knowledge.
+
+Key files: `src/data/knowledge/shimi-tree.ts`, `src/data/knowledge/obd-ontology.ts`
+
+---
+
+## Distributed RAG (Hypercore, opt-in)
 
 OBDient extends local RAG with a **federated knowledge layer** built on
 [Hypercore](https://holepunch.to) and Hyperswarm. Each device maintains a local
 append-only feed of anonymous diagnostic chunks; instances discover each other via a
 shared DHT topic (`obdient-rag-v1`) and replicate feeds without a central server.
 
-```
-[OBDient A]  ←── P2P (Hyperswarm) ───►  [OBDient B]
-  local feed                               local feed
-      ↕  replicate                             ↕  replicate
-  in-memory chunks                        in-memory chunks
-      ↓                                        ↓
-  LLMRepositoryImpl.interpret()           LLMRepositoryImpl.interpret()
-  local snippets + remote chunks          local snippets + remote chunks
-```
-
 **Privacy contract:**
 - Chunks never include VIN, Bluetooth address, or any user identifier.
 - Only DTC code, make, approximate year range, anonymised assessment text, and a
   confidence score are shared.
-- Joining the network and contributing knowledge are **separate opt-in toggles**
-  (both off by default).
-- Remote chunks must reach `confirmations ≥ 3` (seen by at least three independent
-  peers) before they surface in the RAG context.
+- Joining the network and contributing knowledge are **separate opt-in toggles** (both off by default).
+- Remote chunks must reach `confirmations ≥ 3` before surfacing in context.
 
-Key files:
-
-| File | Role |
-|---|---|
-| `src/data/datasources/hypercore-knowledge.datasource.ts` | Feed lifecycle, Hyperswarm peer management, in-memory chunk store |
-| `src/data/datasources/knowledge-extractor.ts` | Distils a closed session into an anonymous `KnowledgeChunk` |
-| `src/data/repositories/llm.repository.impl.ts` | Fuses local + remote snippets before every `interpret()` call |
-
-### P2P on device — current state and roadmap
-
-Hypercore and Hyperswarm depend on Node.js built-ins (`net`, `dgram`, `fs`, `crypto`)
-that do not exist in the Hermes / React Native JS runtime. In the current APK, Metro
-redirects both packages to no-op stubs at bundle time (`stubs/hypercore.js`,
-`stubs/hyperswarm.js`), so the app builds and runs cleanly. Everything except actual
-P2P networking is fully functional:
-
-| Layer | Status in APK |
-|---|---|
-| SHIMI confidence tree (MMKV) | ✅ works |
-| SKOS ontology navigation | ✅ works |
-| Trust registry (MMKV) | ✅ works |
-| Pattern evaluator | ✅ works |
-| Local QVAC RAG | ✅ works |
-| Hypercore local feed (disk) | 🔲 stubbed |
-| Hyperswarm P2P discovery | 🔲 stubbed |
-
-To enable real P2P in a production APK there are two paths:
-
-**Option A — Expo native module (recommended)**
-Write a Kotlin/Swift `ExpoModule` that runs Hyperswarm in a background thread and
-exposes an event-emitter bridge to JS. The SHIMI tree and all JS-side logic stay
-unchanged; only the chunk source changes from in-process to cross-thread.
-
-```
-[Hermes / JS thread]           [Kotlin background thread]
-  hypercoreKnowledge   ←────   HypercoreExpoModule
-  (thin JS wrapper)   events   Hyperswarm DHT  ←→  WiFi/LTE
-  shimiTree.applyChunk()       hypercore local feed (disk)
-```
-
-Scaffolding: `npx create-expo-module hypercore-native`. Estimated effort: 1–2 sprints.
-
-**Option B — nodejs-mobile-react-native**
-Embed a full Node.js runtime inside the APK using
-[nodejs-mobile-react-native](https://github.com/nodejs-mobile/nodejs-mobile-react-native).
-The existing `hypercore-knowledge.datasource.ts` code runs almost unchanged inside
-the Node process; a lightweight message bridge replaces the Metro stubs.
-
-```
-[Hermes / JS thread]           [Embedded Node.js process]
-  thin bridge wrapper  ←────   hypercore-knowledge.datasource.ts
-  (same JS interface)  IPC     (current code, unmodified)
-```
-
-Trade-off: APK size increases ~30 MB (embedded Node runtime). Requires switching to
-Bare workflow (incompatible with Expo Go managed builds).
+> Current status: Hypercore/Hyperswarm are stubbed in the APK (no Node.js runtime in Hermes).
+> SHIMI tree, SKOS, trust registry, pattern evaluator, and local RAG all work fully.
 
 ---
 
-## Diagnostic chat
+## Live OBD-II parameters (20 PIDs)
 
-The Diagnostics screen includes a conversational QVAC interface. After the initial
-AI interpretation, the technician can ask follow-up questions about active DTCs, live
-parameters, or repair steps. Chat history is persisted in `sessionStore` for the
-duration of the session.
+| PID | Command | Metric |
+|-----|---------|--------|
+| Engine RPM | `010C` | rpm |
+| Vehicle Speed | `010D` | km/h |
+| Coolant Temp | `0105` | °C |
+| Engine Load | `0104` | % |
+| Mass Air Flow | `0110` | g/s |
+| Throttle Position | `0111` | % |
+| Intake Air Temp | `010F` | °C |
+| Battery Voltage | `ATRV` | V |
+| Short Term Fuel Trim | `0106` | % |
+| Long Term Fuel Trim | `0107` | % ⚠️ alerts at ±15% |
+| Timing Advance | `010E` | ° |
+| Intake MAP | `010B` | kPa |
+| O2 Sensor B1S1 | `0114` | V |
+| O2 Sensor B1S2 | `0115` | V |
+| Engine Run Time | `011F` | s |
+| Fuel Level | `012F` | % |
+| Barometric Pressure | `0133` | kPa |
+| Catalyst Temperature | `013C` | °C |
+| Relative Throttle | `0145` | % |
+| Ambient Temperature | `0146` | °C |
 
-- View model: `src/presentation/viewmodels/useChatVM.ts`
-- Use case: `src/domain/usecases/chat-with-qvac.ts`
-- UI components: `ChatBubble`, `VehicleHeaderCard` in `src/presentation/components/diagnostics/`
+Contextual alerts: battery voltage check while engine running (expected 13.5–14.5V),
+LTFT/STFT ±15%, catalyst temp >900°C, fuel level <10%.
 
 ---
 
@@ -172,7 +198,7 @@ src/
 ├── app/            # expo-router screens (dashboard, diagnostics, reports, settings)
 ├── core/           # constants (PIDs), errors, types, OBD/DTC parsers
 ├── domain/         # entities, repository interfaces, use cases (pure TS)
-├── data/           # datasources (QVAC, RAG, Hypercore, BT, DB), repositories, mappers
+├── data/           # datasources (QVAC, RAG, Claude API, Hypercore, BT, DB), repositories
 ├── presentation/   # components, hooks, providers, view-models
 └── store/          # Zustand stores (obd, session, settings)
 ```
@@ -182,53 +208,53 @@ src/
 ```
 ELM327 (BT) → OBDRepositoryImpl → obdStore
                                         ↓
-                              useDashboardVM / useDiagnosticsVM
+                              useDiagnosticsVM
                                         ↓
-                              InterpretWithQVACUseCase
-                                        ↓
-                              LLMRepositoryImpl
-                              ├── qvacRag.search()        (local embeddings)
-                              ├── hypercoreKnowledge.getChunks()  (distributed)
-                              └── qvacSDK.interpret()     (on-device LLM)
-                                        ↓
-                              sessionStore ← endSession() → knowledge-extractor
-                                                                    ↓
-                                                          hypercore feed (if opted in)
+                              MultiAgentChatUseCase
+                              ├── QueryRouter.classifyQuery()
+                              │
+                              ├── [diagnostic] ChatWithQVACUseCase
+                              │     └── LLMRepositoryImpl
+                              │           ├── ShimiDataSource.search()
+                              │           │   ├── Layer 0: claudeKnowledge
+                              │           │   ├── Layer 1: shimiTree (SKOS)
+                              │           │   ├── Layer 2: qvacRag (embeddings)
+                              │           │   └── Layer 3: evaluatePatterns()
+                              │           └── qvacSDK.chat()  ← on-device LLM
+                              │
+                              └── [general] ClaudeAPIDataSource
+                                    └── answer → claudeKnowledge.store()
+                                                      ↓
+                                                  SHIMI Layer 0 (offline reuse)
+                                    [background] evaluateResponse()
+                                                  ↓
+                                              correction → SHIMI Layer 0
 ```
 
 ---
 
 ## Hardware requirements
 
-**Phone (test device used):**
-
 | Item         | Requirement                                              |
 |--------------|----------------------------------------------------------|
 | OS           | Android 10+ (`minSdkVersion 29`)                         |
-| RAM          | 4 GB minimum, 6 GB+ recommended (model loads into RAM)   |
-| Connectivity | Bluetooth Classic (for the ELM327 adapter)               |
-| Free storage | ~1 GB for the on-device model                            |
+| RAM          | 4 GB minimum, 6 GB+ recommended                          |
+| Connectivity | Bluetooth Classic (for ELM327 adapter)                   |
+| Free storage | ~1 GB for on-device models                               |
 
-> A **physical Android device is required.** The app depends on Bluetooth Classic
-> and native modules (Bare runtime, MMKV), which do **not** work on the Android
-> emulator or in Expo Go.
+> A **physical Android device is required.** Bluetooth Classic and native modules
+> (QVAC SDK Bare runtime, MMKV) do not work on the Android emulator or Expo Go.
 
-**OBD-II adapter:**
-
-- A standard **ELM327 Bluetooth** adapter (Bluetooth Classic, *not* BLE-only).
-- Plug it into the car's OBD-II port (usually under the steering wheel).
-- Pair it in Android **Settings → Bluetooth** first (typical PIN: `1234` or `0000`).
+**OBD-II adapter:** Standard ELM327 Bluetooth (Classic, not BLE-only). Pair in
+Android Settings → Bluetooth first (typical PIN: `1234` or `0000`).
 
 ---
 
-## Prerequisites (software)
+## Prerequisites
 
 - **Node.js 20+** and npm
-- **JDK 17** and the **Android SDK** (Android Studio) with USB debugging set up
-- An Android phone connected via USB with developer mode enabled
-
-> Expo 56 pins exact native versions. Before changing native code, read the
-> versioned docs at <https://docs.expo.dev/versions/v56.0.0/>.
+- **JDK 17** and **Android SDK** (Android Studio) with USB debugging set up
+- A physical Android phone with developer mode enabled
 
 ---
 
@@ -242,78 +268,68 @@ cd OBDient
 # 2. Install dependencies
 npm install
 
-# 3. Configure environment (optional — only needed for online VIN decode)
+# 3. Configure environment
 cp .env.example .env
-# Edit .env and add your Vincario keys if you have them.
-# AI inference and the P2P knowledge network need NO env vars.
+# Edit .env — add your Anthropic key for Claude cloud features (optional).
+# AI diagnostics work fully offline without any API keys.
 
-# 4. Connect a physical Android phone via USB (USB debugging ON), then:
+# 4. Connect Android phone via USB (USB debugging ON), then:
 npm run android
 # Builds a custom dev client with Gradle and installs it on the phone.
-# The first build takes several minutes.
+# First build takes several minutes.
 ```
 
 On the device:
 
-1. Open OBDient → **Settings → QVAC Assistant → Load model**
-   (downloads the model once; badge turns to `READY`).
-2. Plug the ELM327 into the car's OBD-II port and turn the ignition on.
-3. Pair the adapter in Android Bluetooth settings (PIN `1234`).
-4. In OBDient → **Settings → Scan Paired Devices** → tap your adapter to connect.
-5. Go to **Dashboard / Diagnostics** to see live data and AI interpretations.
+1. **Settings → QVAC Assistant → Load model** — downloads CARpsy once (~400 MB).
+2. Plug ELM327 into the car's OBD-II port and turn ignition on.
+3. Pair adapter in Android Bluetooth settings (PIN `1234`).
+4. **Settings → Scan Paired Devices** → tap adapter to connect.
+5. Go to **Dashboard / Diagnostics** — live data and AI chat are ready.
 
-To try the distributed RAG network:
+To enable Claude cloud features:
 
-6. **Settings → Knowledge network → Distributed RAG** → enable.
-7. Optionally enable **Contribute knowledge** to share anonymous DTC patterns.
-8. The peer badge shows connected peers in real time (refreshes every 5 s).
+6. **Settings → Claude AI** — paste your Anthropic API key.
+   General questions now route to Claude; quality evaluation runs in background.
+   The badge shows how many knowledge entries CARpsy has learned from Claude.
 
 ---
 
 ## Configuration (`.env`)
 
-| Variable                          | Required | Purpose                          |
-|-----------------------------------|----------|----------------------------------|
-| `EXPO_PUBLIC_VINCARIO_API_KEY`    | No       | Online VIN decode (Vincario API) |
-| `EXPO_PUBLIC_VINCARIO_SECRET_KEY` | No       | Online VIN decode (Vincario API) |
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `EXPO_PUBLIC_VINCARIO_API_KEY` | No | Online VIN decode (Vincario API) |
+| `EXPO_PUBLIC_VINCARIO_SECRET_KEY` | No | Online VIN decode (Vincario API) |
+| `EXPO_PUBLIC_ANTHROPIC_API_KEY` | No | Claude cloud fallback + quality evaluator |
 
-There is **no** AI/model/base-URL variable: inference is on-device by design.
+Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — runs fully on-device.
 
 ---
 
 ## Scripts
 
-| Command               | Description                                        |
-|-----------------------|----------------------------------------------------|
-| `npm run android`     | Build + run the dev client on Android              |
-| `npm start`           | Start the Metro bundler                            |
-| `npm test`            | Run the Jest test suite                            |
-| `npm run db:generate` | Generate Drizzle SQLite migrations                 |
-| `npm run db:studio`   | Open Drizzle Studio                                |
-| `node scripts/test-hypercore-local.js` | Hypercore v11 smoke test (Node only, no device needed) |
-
----
-
-## Testing
-
-```bash
-npm test
-```
-
-Unit tests cover the OBD/DTC parsers, VIN mapping, the SHA-1 helper, and the
-connect-to-vehicle use case (`src/__tests__/`).
+| Command | Description |
+|---------|-------------|
+| `npm run android` | Build + run dev client on Android |
+| `npm start` | Start Metro bundler only |
+| `npm test` | Run Jest test suite |
+| `npm run db:generate` | Generate Drizzle SQLite migrations |
 
 ---
 
 ## Hackathon compliance (QVAC requirements)
 
-| Mandatory requirement                          | Status | Where                                                 |
-|------------------------------------------------|--------|-------------------------------------------------------|
-| All AI inference via QVAC SDK                  | ✅     | `src/data/datasources/qvac-sdk.datasource.ts`         |
-| RAG via QVAC SDK                               | ✅     | `src/data/datasources/qvac-rag.datasource.ts`         |
-| Runs on real consumer hardware (Mobile track)  | ✅     | Android phone + ELM327, this README                   |
-| Reproducibility + hardware setup instructions  | ✅     | This README                                           |
-| Complete artifacts (logs, demo, hardware proof)| 🚧     | See `/artifacts` (demo video, profiler logs)          |
+| Requirement | Status | Where |
+|---|---|---|
+| All primary AI inference via QVAC SDK | ✅ | `qvac-sdk.datasource.ts`, `qvac-rag.datasource.ts` |
+| RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
+| Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
+| Reproducibility + hardware setup instructions | ✅ | This README |
+| Complete artifacts (logs, demo, hardware proof) | 🚧 | See `/artifacts` |
+
+> Cloud (Claude API) is an optional enhancement layer only — all mandatory QVAC
+> inference paths use the on-device SDK exclusively.
 
 ---
 
