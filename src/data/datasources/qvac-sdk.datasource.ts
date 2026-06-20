@@ -49,6 +49,16 @@ function stripThinkingTokens(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
 }
 
+// Removes known CARpsy fine-tuning artifacts that leak into responses.
+// These are training-data instructions the model echoes in certain contexts.
+function stripModelArtifacts(text: string): string {
+  return text
+    .replace(/—\s*Do not answer in \w+\.?/gi, '')
+    .replace(/Do not answer in \w+\.?/gi, '')
+    .replace(/Respond in the same language.*?\./gi, '')
+    .trim();
+}
+
 export class QvacSDKDataSource {
   private modelId: string | null = null;
   private loadingPromise: Promise<void> | null = null;
@@ -114,10 +124,19 @@ export class QvacSDKDataSource {
       throw new QvacUnavailableError('QVAC model is not loaded. Call initialize() first.');
     }
 
+    // Cap history to last 6 messages (3 exchanges) to stay within the 0.6B model context window.
+    // The full history causes context overflow → model loops and repeats its last response.
+    const MAX_HISTORY = 6;
+    const cappedHistory = history.slice(-MAX_HISTORY);
+
+    // Close the systemContext "user" turn with an assistant ack before the real conversation.
+    // Without this, the first real user message follows the context directly as a second consecutive
+    // user turn — invalid chat format that confuses the model.
     const llmHistory = [
-      { role: 'system' as const, content: SYSTEM_PROMPT },
-      { role: 'user' as const,   content: systemContext },
-      ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      { role: 'system' as const,    content: SYSTEM_PROMPT },
+      { role: 'user' as const,      content: systemContext },
+      { role: 'assistant' as const, content: 'Understood. I have the vehicle data. How can I help?' },
+      ...cappedHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     ];
 
     let text = '';
@@ -130,7 +149,7 @@ export class QvacSDKDataSource {
       throw new QvacRequestError(0, `On-device inference failed: ${String(err)}`);
     }
 
-    const trimmed = stripThinkingTokens(text);
+    const trimmed = stripModelArtifacts(stripThinkingTokens(text));
     if (!trimmed) throw new QvacRequestError(0, 'QVAC returned empty response');
     return { text: trimmed, generatedAt: new Date() };
   }

@@ -104,10 +104,8 @@ export class LLMRepositoryImpl implements ILLMRepository {
             .join('\n')}`
         : '';
 
-      // Language reminder goes AFTER knowledge so it's the last instruction before history
-      const languageReminder = '\n\nRespond in the same language as the last user message.';
 
-      const enrichedContext = request.systemContext + knowledgeBlock + languageReminder;
+      const enrichedContext = request.systemContext + knowledgeBlock;
       const result = await qvacSDK.chat(enrichedContext, request.history);
       return { ...result, isAiGenerated: true };
     } catch (err) {
