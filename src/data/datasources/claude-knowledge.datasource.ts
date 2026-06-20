@@ -12,6 +12,9 @@ export interface ClaudeKnowledgeEntry {
   readonly query: string;
   readonly answer: string;
   readonly storedAt: string; // ISO-8601
+  // Human confirmations (👍). 0 = unverified single-source Claude output.
+  // Once confirmed, this entry is no longer a pure single-source suggestion.
+  readonly confirmations: number;
 }
 
 export class ClaudeKnowledgeDataSource {
@@ -22,8 +25,29 @@ export class ClaudeKnowledgeDataSource {
   }
 
   async store(query: string, answer: string): Promise<void> {
-    this.entries.unshift({ query, answer, storedAt: new Date().toISOString() });
+    this.entries.unshift({ query, answer, storedAt: new Date().toISOString(), confirmations: 0 });
     if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(0, MAX_ENTRIES);
+    this.persist();
+  }
+
+  /** Human feedback 👍 — mark a Claude-origin entry as confirmed.
+   *  A confirmed entry is no longer a pure single-source suggestion. */
+  confirm(query: string): void {
+    const entry = this.entries.find((e) => e.query === query);
+    if (!entry) return;
+    const idx = this.entries.indexOf(entry);
+    this.entries[idx] = { ...entry, confirmations: entry.confirmations + 1 };
+    this.persist();
+  }
+
+  /** Human feedback 👎 — remove a rejected Claude-origin entry so it stops
+   *  surfacing as knowledge. Rejecting a hallucination deletes it from Layer 0. */
+  reject(query: string): void {
+    this.entries = this.entries.filter((e) => e.query !== query);
+    this.persist();
+  }
+
+  private persist(): void {
     mmkv.set(ENTRIES_KEY, JSON.stringify(this.entries));
   }
 
@@ -66,7 +90,14 @@ export class ClaudeKnowledgeDataSource {
   private load(): void {
     try {
       const raw = mmkv.getString(ENTRIES_KEY);
-      this.entries = raw ? (JSON.parse(raw) as ClaudeKnowledgeEntry[]) : [];
+      const parsed = raw ? (JSON.parse(raw) as Partial<ClaudeKnowledgeEntry>[]) : [];
+      // Normalize entries stored before `confirmations` existed.
+      this.entries = parsed.map((e) => ({
+        query: e.query ?? '',
+        answer: e.answer ?? '',
+        storedAt: e.storedAt ?? new Date().toISOString(),
+        confirmations: e.confirmations ?? 0,
+      }));
     } catch {
       this.entries = [];
     }

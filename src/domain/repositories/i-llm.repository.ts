@@ -10,11 +10,23 @@ export interface LLMInterpretationRequest {
   readonly vehicleContext?: string;
 }
 
+// What knowledge a response drew on — so human feedback (👍/👎) can target it.
+export interface RetrievalProvenance {
+  // Canonical DTC whose SHIMI node confidence should move on feedback (null = none).
+  readonly dtcId: string | null;
+  // Query keys of Claude-origin entries used (for confirm/reject in claudeKnowledge).
+  readonly claudeQueries: readonly string[];
+  // Whether the response leaned on any unverified (Claude-origin) suggestion.
+  readonly usedUnverified: boolean;
+}
+
 export interface LLMInterpretationResult {
   readonly text: string;
   readonly generatedAt: Date;
   // true if the response came from QVAC, false if it's a hardcoded fallback
   readonly isAiGenerated: boolean;
+  // Present when the response went through the retrieval pipeline (chat flow).
+  readonly retrieval?: RetrievalProvenance;
 }
 
 export interface ChatTurn {

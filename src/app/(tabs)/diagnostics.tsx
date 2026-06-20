@@ -43,7 +43,7 @@ export default function DiagnosticsScreen() {
   const addChatMessage    = useSessionStore((s) => s.addChatMessage);
 
   const { codes, loadState, errorMessage, readCodes, clearCodes } = useDiagnosticsVM();
-  const { messages, isResponding, chatError, sendMessage, sendInitialAssessment } = useChatVM();
+  const { messages, isResponding, chatError, feedback, sendMessage, sendInitialAssessment, rateMessage } = useChatVM();
 
   const [mileageText, setMileageText]   = useState('');
   const [inputText, setInputText]       = useState('');
@@ -232,7 +232,12 @@ export default function DiagnosticsScreen() {
           keyboardDismissMode="interactive"
         >
           {messages.map((msg) => (
-            <ChatBubble key={msg.id} message={msg} />
+            <ChatBubble
+              key={msg.id}
+              message={msg}
+              feedback={feedback[msg.id]}
+              onRate={rateMessage}
+            />
           ))}
 
           {isResponding && (

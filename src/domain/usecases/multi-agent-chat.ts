@@ -50,7 +50,14 @@ export class MultiAgentChatUseCase {
       // Persist Claude's answer in SHIMI knowledge for offline reuse
       await this.claudeKnowledge.store(userText, text);
 
-      return { text, generatedAt: new Date(), isAiGenerated: true, source: 'claude' };
+      // A direct Claude answer is unverified single-source; 👍 confirms this entry.
+      return {
+        text,
+        generatedAt: new Date(),
+        isAiGenerated: true,
+        source: 'claude',
+        retrieval: { dtcId: null, claudeQueries: [userText], usedUnverified: true },
+      };
     } catch (err) {
       console.warn('[MultiAgent] Claude failed, falling back to CARpsy:', err);
       const result = await this.carpsy.execute(input);

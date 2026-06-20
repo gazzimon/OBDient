@@ -19,7 +19,7 @@
 import { OBD_ONTOLOGY, CONCEPT_MAP, retrievalContext } from './obd-ontology';
 import type { SkosConceptNode } from './obd-ontology';
 import { OBD_KNOWLEDGE } from './obd-knowledge';
-import { createShimiNode, applyConfirmation, applyDecay } from './shimi-node';
+import { createShimiNode, applyConfirmation, applyRejection, applyDecay } from './shimi-node';
 import type { ShimiNode } from './shimi-node';
 import type { FactChunk, SkosPatch } from './distributed-chunk';
 import { QUORUM } from './distributed-chunk';
@@ -153,6 +153,30 @@ export class ShimiTree {
 
     const updated = applyConfirmation(node);
     this.tree.set(canonicalId, updated);
+    persistWeights(this.tree);
+  }
+
+  /** Human feedback 👍 — raise confidence of the canonical node for a DTC.
+   *  This is the local equivalent of a peer confirmation, driven by the user
+   *  instead of the Hypercore network. */
+  confirmDtc(dtcId: string): void {
+    const contexts = retrievalContext(dtcId);
+    if (contexts.length === 0) return;
+    const id = contexts[0]!.id;
+    const node = this.tree.get(id);
+    if (!node) return;
+    this.tree.set(id, applyConfirmation(node));
+    persistWeights(this.tree);
+  }
+
+  /** Human feedback 👎 — lower confidence of the canonical node for a DTC. */
+  weakenDtc(dtcId: string): void {
+    const contexts = retrievalContext(dtcId);
+    if (contexts.length === 0) return;
+    const id = contexts[0]!.id;
+    const node = this.tree.get(id);
+    if (!node) return;
+    this.tree.set(id, applyRejection(node));
     persistWeights(this.tree);
   }
 

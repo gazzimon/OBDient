@@ -117,7 +117,15 @@ export class LLMRepositoryImpl implements ILLMRepository {
 
       const enrichedContext = request.systemContext + knowledgeBlock;
       const result = await qvacSDK.chat(enrichedContext, request.history);
-      return { ...result, isAiGenerated: true };
+      return {
+        ...result,
+        isAiGenerated: true,
+        retrieval: {
+          dtcId: primaryDtcId ?? null,
+          claudeQueries: unverified.map((u) => u.query),
+          usedUnverified: unverified.length > 0,
+        },
+      };
     } catch (err) {
       if (isQvacError(err)) {
         console.error('[QVAC] chat() failed:', err);

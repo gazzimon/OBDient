@@ -5,13 +5,25 @@ import { useState, useCallback } from 'react';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { container } from '@/data/container';
+import { shimiDataSource } from '@/data/datasources/shimi.datasource';
+import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { createChatMessage } from '@/domain/entities/chat-message';
 import type { ChatSource } from '@/domain/entities/chat-message';
-import type { ChatTurn } from '@/domain/repositories/i-llm.repository';
+import type { ChatTurn, RetrievalProvenance } from '@/domain/repositories/i-llm.repository';
+
+export type Rating = 'up' | 'down';
+
+// Per-message feedback state: what the response drew on + the user's rating.
+export interface MessageFeedback {
+  readonly provenance: RetrievalProvenance;
+  readonly rating: Rating | null;
+}
 
 export function useChatVM() {
   const [isResponding, setIsResponding] = useState(false);
   const [chatError, setChatError]       = useState<string | null>(null);
+  // messageId → feedback. Ephemeral (session-scoped); confidence changes persist.
+  const [feedback, setFeedback] = useState<Record<string, MessageFeedback>>({});
 
   const vehicle       = useOBDStore((s) => s.vehicle);
   const parameters    = useOBDStore((s) => s.parameters);
@@ -46,7 +58,12 @@ export function useChatVM() {
       });
 
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
-      addChatMessage(createChatMessage('assistant', result.text, source));
+      const assistantMsg = createChatMessage('assistant', result.text, source);
+      addChatMessage(assistantMsg);
+      if (result.retrieval) {
+        const prov = result.retrieval;
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+      }
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Chat failed');
     } finally {
@@ -68,7 +85,12 @@ export function useChatVM() {
         history: [{ role: 'user', content: prompt }],
       });
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
-      addChatMessage(createChatMessage('assistant', result.text, source));
+      const assistantMsg = createChatMessage('assistant', result.text, source);
+      addChatMessage(assistantMsg);
+      if (result.retrieval) {
+        const prov = result.retrieval;
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+      }
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Initial assessment failed');
     } finally {
@@ -76,11 +98,34 @@ export function useChatVM() {
     }
   }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage]);
 
+  // Human feedback 👍/👎 — moves confidence of the knowledge the response used.
+  // 👍 raises the SHIMI node (verified) and confirms any Claude-origin entries used.
+  // 👎 lowers the node and removes the rejected Claude-origin entries.
+  const rateMessage = useCallback((messageId: string, rating: Rating) => {
+    setFeedback((f) => {
+      const entry = f[messageId];
+      if (!entry || entry.rating != null) return f; // no provenance, or already rated
+      const { dtcId, claudeQueries } = entry.provenance;
+
+      if (rating === 'up') {
+        if (dtcId) shimiDataSource.confirmDtc(dtcId);
+        claudeQueries.forEach((q) => claudeKnowledge.confirm(q));
+      } else {
+        if (dtcId) shimiDataSource.weakenDtc(dtcId);
+        claudeQueries.forEach((q) => claudeKnowledge.reject(q));
+      }
+
+      return { ...f, [messageId]: { ...entry, rating } };
+    });
+  }, []);
+
   return {
     messages,
     isResponding,
     chatError,
+    feedback,
     sendMessage,
     sendInitialAssessment,
+    rateMessage,
   } as const;
 }

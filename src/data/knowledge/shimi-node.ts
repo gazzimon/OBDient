@@ -49,6 +49,18 @@ export function applyConfirmation(node: ShimiNode): ShimiNode {
   };
 }
 
+// Lower confidence in response to an explicit human rejection (👎).
+// Mirrors applyConfirmation but downward, with a 0.1 floor so a node is never
+// fully zeroed by a single bad call. Does not touch the confirmations counter.
+export function applyRejection(node: ShimiNode): ShimiNode {
+  const next = node.confidence - node.confidence * 0.15;
+  return {
+    ...node,
+    confidence: Math.max(next, 0.1),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 // Decay confidence slightly when time passes without new confirmations.
 // Called periodically — each decay step reduces confidence by 2%.
 export function applyDecay(node: ShimiNode): ShimiNode {

@@ -89,6 +89,15 @@ export class ShimiDataSource {
     }
   }
 
+  /** Human feedback 👍/👎 on the verified knowledge used for a DTC. */
+  confirmDtc(dtcId: string): void {
+    shimiTree.confirmDtc(dtcId);
+  }
+
+  weakenDtc(dtcId: string): void {
+    shimiTree.weakenDtc(dtcId);
+  }
+
   /** Expose confidence for a concept — used by the Settings debug panel. */
   confidenceFor(conceptId: string): number {
     return shimiTree.confidenceFor(conceptId);
