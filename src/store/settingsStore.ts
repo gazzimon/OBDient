@@ -32,6 +32,8 @@ interface SettingsState {
   knowledgeNetworkEnabled: boolean;
   // Opt-in to contribute anonymous diagnostic chunks to the shared feed.
   contributeKnowledge: boolean;
+  // Anthropic API key for Claude cloud fallback (general questions + quality evaluation).
+  claudeApiKey: string | null;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -42,6 +44,7 @@ interface SettingsState {
   setCustomModelSrc: (src: string | null) => void;
   setKnowledgeNetworkEnabled: (enabled: boolean) => void;
   setContributeKnowledge: (enabled: boolean) => void;
+  setClaudeApiKey: (key: string | null) => void;
   reset: () => void;
 }
 
@@ -55,6 +58,7 @@ const DEFAULTS = {
   customModelSrc: null as string | null,
   knowledgeNetworkEnabled: false,
   contributeKnowledge: false,
+  claudeApiKey: null as string | null,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -71,6 +75,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCustomModelSrc: (src) => set({ customModelSrc: src }),
       setKnowledgeNetworkEnabled: (enabled) => set({ knowledgeNetworkEnabled: enabled }),
       setContributeKnowledge: (enabled) => set({ contributeKnowledge: enabled }),
+      setClaudeApiKey: (key) => set({ claudeApiKey: key }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -88,6 +93,7 @@ export const useSettingsStore = create<SettingsState>()(
         customModelSrc: state.customModelSrc,
         knowledgeNetworkEnabled: state.knowledgeNetworkEnabled,
         contributeKnowledge: state.contributeKnowledge,
+        claudeApiKey: state.claudeApiKey,
       }),
     }
   )

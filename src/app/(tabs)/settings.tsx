@@ -2,7 +2,7 @@
 // QVAC on-device model status, and alert preferences. QVAC grouped-card style.
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
+import { View, Text, ScrollView, Switch, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider';
@@ -51,6 +51,11 @@ export default function SettingsScreen() {
   const vm = useSettingsVM();
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
+
+  const claudeApiKey    = useSettingsStore((s) => s.claudeApiKey);
+  const setClaudeApiKey = useSettingsStore((s) => s.setClaudeApiKey);
+  const [apiKeyInput, setApiKeyInput]   = useState(claudeApiKey ?? '');
+  const [showApiKey, setShowApiKey]     = useState(false);
 
   const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
@@ -306,6 +311,49 @@ export default function SettingsScreen() {
               {modelError}
             </Text>
           )}
+        </View>
+
+        {/* ---------- Claude AI ---------- */}
+        <SectionHeader title="Claude AI" />
+
+        <View className="bg-brand-surface rounded-2xl p-4 mb-6">
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-1 mr-3">
+              <Text className="text-brand-text font-mono text-sm">Anthropic API Key</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Enables cloud fallback for general questions + quality evaluation
+              </Text>
+            </View>
+            <View className={`px-2 py-0.5 rounded-md border ${claudeApiKey ? 'border-brand-teal' : 'border-brand-muted'}`}>
+              <Text className={`font-mono text-xs ${claudeApiKey ? 'text-brand-teal' : 'text-brand-muted'}`}>
+                {claudeApiKey ? 'CONFIGURED' : 'NOT SET'}
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center gap-2">
+            <TextInput
+              className="flex-1 bg-brand-bg border border-brand-border rounded-xl px-3 py-2.5 text-brand-text font-mono text-xs"
+              placeholder="sk-ant-api03-..."
+              placeholderTextColor={MUTED}
+              value={apiKeyInput}
+              onChangeText={setApiKeyInput}
+              onBlur={() => setClaudeApiKey(apiKeyInput.trim() || null)}
+              secureTextEntry={!showApiKey}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              onPress={() => setShowApiKey((v) => !v)}
+              className="p-2 active:opacity-60"
+            >
+              <MaterialCommunityIcons
+                name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
+                size={18}
+                color={MUTED}
+              />
+            </Pressable>
+          </View>
         </View>
 
         {/* ---------- Knowledge network ---------- */}
