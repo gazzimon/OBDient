@@ -1,5 +1,7 @@
 # OBDient 🚗🧠
 
+> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md)
+
 **Your car, explained — privately, on your phone.**
 
 OBDient plugs into any ELM327 OBD-II adapter, reads your engine in real time, and
@@ -8,6 +10,9 @@ on-device** through the [QVAC SDK](https://docs.qvac.tether.io/) — no cloud ne
 for the core diagnosis.
 
 > Built for the Tether QVAC Hackathon — **Mobile track**.
+
+> 🧠 **The big picture:** this README is the technical proof. For the *why* and where
+> this is going — a private brain inside every car — read **[VISION.md](./VISION.md)**.
 
 ### 🎥 Watch the 2-minute demo
 
