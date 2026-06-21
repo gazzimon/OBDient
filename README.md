@@ -1,6 +1,6 @@
 # OBDient 🚗🧠
 
-> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
+> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 📸 [Artifacts](./ARTIFACTS.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 **Your car, explained — privately, on your phone.**
 
@@ -19,6 +19,9 @@ for the core diagnosis.
 [![OBDient demo — on-device AI car diagnostics](https://img.youtube.com/vi/AU2e477oyn0/maxresdefault.jpg)](https://youtu.be/AU2e477oyn0)
 
 > Real phone, real ELM327 adapter, real car — diagnosing live, fully on-device.
+
+> 📸 **Prefer stills?** See **[ARTIFACTS.md](./ARTIFACTS.md)** — hardware photos,
+> app screenshots of the full flow, and the on-device inference logs.
 
 ---
 
@@ -169,7 +172,7 @@ and background quality evaluation only.
 | RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
 | Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
 | Reproducibility + hardware setup instructions | ✅ | This README |
-| Complete artifacts (logs, demo, hardware proof) | ✅ | [artifacts/](artifacts/) — demo video, on-device logs, hardware proof |
+| Complete artifacts (logs, demo, hardware proof) | ✅ | [ARTIFACTS.md](./ARTIFACTS.md) — photos, screenshots, on-device logs, demo video |
 
 > Cloud (Claude API) is an optional enhancement only — every mandatory QVAC
 > inference path uses the on-device SDK exclusively.

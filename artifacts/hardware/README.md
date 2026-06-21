@@ -154,9 +154,18 @@ cd android && ./gradlew assembleRelease
 
 ## Stills
 
-Add one or more frames from the demo video here as proof images, e.g.:
+Proof images live in this folder; the full annotated gallery is in
+[ARTIFACTS.md](../../ARTIFACTS.md).
 
-- `setup.jpg` — phone + ELM327 plugged into the car's OBD-II port.
-- `dashboard.jpg` — live data streaming on the device.
+**Hardware photos**
+- `setup-phone-adapter.jpeg` — phone running OBDient next to the ELM327 adapter.
+- `elm327-in-car-port.jpeg` — adapter plugged into the car's OBD-II port (LED on).
+- `vehicle-cluster.jpeg` — the live vehicle's instrument cluster (engine running).
 
-_(Drop the image files in this folder and reference them above.)_
+**App screenshots**
+- `screen-dashboard-live.jpeg` — live OBD-II data streaming on the dashboard.
+- `screen-settings-model.jpeg` — CARpsy on-device model loaded (READY).
+- `screen-chat-carpsy.jpeg` — on-device diagnostic chat with CARpsy.
+- `screen-chat-multiagent-vin.jpeg` — multi-agent routing (Claude for the VIN question).
+- `screen-chat-feedback.jpeg` — 👍/👎 human distillation feedback.
+- `screen-reports.jpeg` — persisted sessions (local SQLite).

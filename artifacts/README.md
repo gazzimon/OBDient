@@ -50,12 +50,13 @@ inference and RAG run on-device via the QVAC SDK** — no inference server, no c
 for the diagnostic path. See [logs/README.md](logs/README.md) for how the capture
 was produced and how to reproduce it.
 
-Key evidence lines to look for:
+Key evidence lines (real lines from [`logs/session-20260621-124953.log`](logs/session-20260621-124953.log)):
 
 ```
-[QVAC] Model loaded on-device in <ms>ms — src=…CARpsy…gguf modelId=…
-[QVAC] On-device inference: <N> tokens in <ms>ms (<tok/s>) modelId=…
-[RAG]  retrieval (dtc=Pxxxx): claude=… shimi=… vector=… → merged=…
+[QVAC] Model loaded on-device in 9429ms — src=…CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf modelId=ffe5e08fe94ddb38
+[QVAC] On-device inference: 78 tokens in 41026ms (1.9 tok/s) modelId=ffe5e08fe94ddb38
+[RAG]  retrieval (dtc=none): shimi=0 vector=3 → verified=3 unverified=2
+[QualityEval] Score 3/5 — response acceptable
 ```
 
 ---
