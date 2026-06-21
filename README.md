@@ -1,92 +1,139 @@
-# OBDient
+# OBDient 🚗🧠
 
-**An on-device AI co-pilot for your car.** OBDient connects to a standard ELM327
-OBD-II adapter over Bluetooth, reads live engine data and fault codes, and explains
-what's going on in plain language — with primary AI inference running **100% locally
-on the phone** via the [QVAC SDK](https://docs.qvac.tether.io/).
+**Your car, explained — privately, on your phone.**
+
+OBDient plugs into any ELM327 OBD-II adapter, reads your engine in real time, and
+diagnoses faults in plain language using a **self-trained AI model that runs 100%
+on-device** through the [QVAC SDK](https://docs.qvac.tether.io/) — no cloud needed
+for the core diagnosis.
 
 > Built for the Tether QVAC Hackathon — **Mobile track**.
 
 ---
 
-## What it does
+## Why OBDient is different
 
-- Connects to any ELM327 Bluetooth OBD-II adapter (Bluetooth Classic / SPP).
-- Streams **20 real-time OBD-II parameters** (RPM, coolant, speed, fuel trims, O2 sensors, catalyst temp, timing advance, …) on a live dashboard.
-- Reads and clears DTC trouble codes with severity classification.
-- Generates a natural-language diagnostic assessment **on-device** with CARpsy (Qwen3-0.6B, fine-tuned).
-- **Multi-agent conversational chat**: diagnostic queries → CARpsy (on-device, private); general automotive questions → Claude API (cloud).
-- **4-layer knowledge retrieval** on every response: Claude-learned knowledge → SHIMI hierarchical tree → QVAC RAG vectors → Hypercore patterns.
-- **Quality evaluator**: Claude silently scores CARpsy responses in background and stores corrections into SHIMI — the model gets smarter over sessions without retraining.
-- Voice output and hands-free alerts while driving.
-- Decodes VIN (make / model / year / plant) via local lookup and Vincario API.
-- Auto-disconnects after configurable idle period when RPM = 0, protecting battery.
-- **Persistent sessions**: full conversation history saved to local SQLite for later review in Reports.
-- **Distributed RAG** — P2P knowledge network (Hypercore + Hyperswarm) shares anonymous diagnostic patterns across devices with no server and no PII.
+Most diagnostic apps are just a cloud LLM behind a chat box. OBDient is a private,
+self-improving, multi-agent diagnostic brain that lives **on the phone**.
 
-The car's data never leaves the device without explicit consent.
+### 🕸️ The hook — a Hierarchical Semantic RAG, not a flat vector index
+
+We call it our **"Semantic Web 4.0"**. Underneath the name, it's something a
+technical jury can verify: **SHIMI**, an evolving, confidence-weighted
+**knowledge graph** built on a real SKOS ontology.
+
+A normal RAG throws your query at a pile of text chunks and returns whatever looks
+similar — a *flat* lookup. SHIMI instead **reasons through a hierarchy of meaning**:
+
+```
+P0301 (cylinder-1 misfire)
+   └─ misfire_random        ← the canonical concept
+        ├─ ignition         ← ancestor knowledge
+        ├─ fuel_system      ← related branch
+        └─ powertrain       ← parent domain
+```
+
+So a question about one fault code automatically pulls in **ignition and
+fuel-system knowledge too** — the way a real mechanic thinks, not the way a search
+box guesses. Every node carries a **confidence score** that goes up as answers get
+validated, so the graph doesn't just grow — it gets *more trustworthy* over time.
+
+> **In one line:** flat RAG finds *similar words*; SHIMI retrieves *related
+> meaning, ranked by how much we trust it*.
+
+### 🙋 Human distillation — the RAG that learns from its driver
+
+Every answer can be rated 👍 / 👎. That feedback isn't cosmetic: it **distills**
+human judgment straight into the knowledge graph. Verified knowledge is kept
+**separate** from unverified, which is how OBDient actively fights hallucinations.
+
+This creates a virtuous cycle — written here in both registers so anyone gets it:
+
+| What happens (plain) | What it means (technical) |
+|---|---|
+| **More diagnoses get validated** | Human-in-the-loop labels accumulate as ground-truth signals |
+| **The RAG gets denser** | Validated Q→A pairs are promoted into SHIMI, raising retrieval coverage and confidence |
+| **The whole flow gets smarter** | The on-device model retrieves verified answers directly, even offline |
+| **Cloud (Claude) calls drop** | Fewer queries escalate — the system trends toward full local self-sufficiency |
+
+The endgame: **Claude teaches → the human (and the car) verify → SHIMI accumulates
+→ CARpsy needs the cloud less → repeat.** The phone gets smarter without retraining
+the model's weights.
+
+### 🧠 Our own fine-tuned model — not an off-the-shelf API
+
+**CARpsy** is a Qwen3-0.6B we fine-tuned specifically for OBD-II diagnostics. It
+runs locally via the QVAC SDK (~400 MB RAM, works offline).
+
+- 🔧 Training code & data pipeline: **[github.com/gazzimon/CARpsy](https://github.com/gazzimon/CARpsy)**
+- 📦 Quantized weights: **[gazzimon/CARpsy-v2-qwen3-0.6b-GGUF](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)**
+
+### 🤝 Multi-agent by design
+
+A **deterministic router** (no ML, no latency) splits every message across roles:
+
+- **Diagnostician** — CARpsy, on-device, private, offline-capable (DTCs, sensors, faults).
+- **Generalist** — Claude (cloud, opt-in) for open automotive questions; receives
+  make/model/year + the question only — **never** the VIN or raw sensor readings.
+- **Quality-Evaluator** — Claude scores CARpsy's answers in the background and feeds
+  corrections back into SHIMI.
+- **Retriever** — the 4-layer knowledge pipeline (Claude-learned → SHIMI → vector RAG
+  → P2P patterns) that grounds every reply.
+
+### 🔗 Decentralized knowledge sharing — fedRAG (base code, see status)
+
+A peer-to-peer **federated RAG** over [Hypercore + Hyperswarm](https://holepunch.to):
+each device keeps an append-only feed of **anonymous** diagnostic chunks, discovers
+peers through a shared DHT topic, and replicates with **no central server**.
+
+- **End-to-end encrypted** transport (Hyperswarm's Noise protocol) over
+  **cryptographically signed, append-only logs** (tamper-evident by design).
+- **Privacy contract:** chunks never carry VIN, Bluetooth address, or any user ID —
+  only DTC code, make, an approximate year range, anonymized text, and a confidence
+  score. Joining and contributing are **two separate opt-in toggles**, both off by default.
+- **Trust-gated:** remote knowledge is weighted by peer reputation and must reach a
+  **quorum of confirmations** before it can influence a diagnosis.
+
+> **⚠️ Status — full transparency.** The federated layer is **written and compiles,
+> but it has never been exercised peer-to-peer.** During the hackathon OBDient was
+> only ever installed on a **single device**, so cross-device replication was never
+> tested — and the runtime is currently **stubbed** anyway, because Hermes (React
+> Native's JS engine) has no Node.js host to run Hypercore. **Treat fedRAG as
+> architected base code, not a demonstrated feature.** Everything else in this list
+> — CARpsy, SHIMI, the 4-layer RAG, human distillation, the trust registry — runs
+> today on real hardware.
 
 ---
 
-## Intelligence architecture
-
-### Two-agent system
+## How it works (at a glance)
 
 ```
-User message
-      │
-      ▼
- QueryRouter  ← deterministic, no ML
-      │
-      ├── DTCs / sensor keywords / fault diagnosis
-      │       ↓
-      │   CARpsy (on-device, Qwen3-0.6B Q4_K_M)
-      │   + 4-layer knowledge retrieval
-      │   Private · Fast · Works offline
-      │
-      └── General automotive questions
-              ↓
-          Claude API (cloud, Haiku)
-          Receives: make/model/year + question only
-          Never receives: VIN, sensor readings
-              ↓
-          Answer stored in SHIMI (offline reuse)
+        User message
+             │
+        ┌────▼─────┐  deterministic, no ML
+        │  Router  │
+        └────┬─────┘
+   diagnostic│           general
+       ┌─────┴─────┐  ┌──────────────┐
+       ▼           │  ▼              │
+   CARpsy          │  Claude (cloud, opt-in)
+   on-device       │  make/model/year + question only
+       │           │  └─ answer stored locally for offline reuse
+       ▼           │
+  4-layer RAG ─────┘
+   ├─ Claude-learned knowledge
+   ├─ SHIMI hierarchical graph (SKOS)
+   ├─ on-device vector RAG (EmbeddingGemma)
+   └─ P2P pattern layer (fedRAG)
+       │
+       ▼
+   Grounded, plain-language diagnosis
+   + background Quality-Evaluator → corrections back into SHIMI
 ```
 
-### 4-layer knowledge retrieval pipeline
-
-```
-Query
-  │
-  ├─ Layer 0: Claude-learned knowledge (MMKV, keyword match)
-  │           Answers Claude already gave in past sessions
-  │
-  ├─ Layer 1: SHIMI hierarchical tree (SKOS ontology, confidence-ranked)
-  │           DTC → canonical concept → ancestors + related nodes
-  │
-  ├─ Layer 2: QVAC RAG vector search (EmbeddingGemma 300M, on-device)
-  │           Semantic similarity over OBD-II knowledge corpus
-  │
-  └─ Layer 3: Hypercore pattern evaluator
-              Rule-based patterns validated by P2P peer consensus
-```
-
-### Quality evaluator loop
-
-```
-CARpsy answers a diagnostic question
-            ↓
-  Claude evaluates score 1–5 (background, non-blocking)
-            │
-    score ≥ 3 ──► log "acceptable"
-            │
-    score < 3 ──► Claude correction → stored in SHIMI Layer 0
-                  Next time, CARpsy retrieves the correct answer
-                  (even offline — it's in MMKV)
-```
-
-Over sessions, SHIMI grows from Claude's validated knowledge. The on-device model
-effectively gets smarter without retraining its weights.
+📖 **Deep dive:** the full two-agent system, the 4-layer retrieval pipeline, the
+quality-evaluator loop, and the end-to-end data flow now live in
+**[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)**.
 
 ---
 
@@ -94,73 +141,46 @@ effectively gets smarter without retraining its weights.
 
 | Model | Role | Size | Runs |
 |-------|------|------|------|
-| **[CARpsy](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
+| **[CARpsy](https://github.com/gazzimon/CARpsy)** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
 | **EmbeddingGemma 300M** (4-bit) | RAG vector embeddings | ~300 MB RAM | On-device via QVAC SDK |
-| **Claude Haiku** | General questions + quality eval | — | Cloud (optional) |
+| **Claude Haiku** | General questions + quality eval | — | Cloud (opt-in) |
 
-Primary AI path (diagnostics, DTC analysis) is 100% on-device. Cloud is opt-in for
-general questions and background quality evaluation only.
-
-> **CARpsy** is OBDient's own fine-tuned model — a Qwen3-0.6B specialised for OBD-II
-> diagnostics, published on Hugging Face:
-> [`gazzimon/CARpsy-v2-qwen3-0.6b-GGUF`](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF).
-> It's downloaded once on first model load and cached on-device by the QVAC SDK.
+The **primary AI path is 100% on-device**. Cloud is opt-in, for general questions
+and background quality evaluation only.
 
 ---
 
-## On-device RAG (QVAC)
+## Hackathon compliance (QVAC requirements)
 
-Before each response, OBDient retrieves relevant repair knowledge from a local vector
-store and feeds it as grounding context — no internet required.
+| Requirement | Status | Where |
+|---|---|---|
+| All primary AI inference via QVAC SDK | ✅ | `qvac-sdk.datasource.ts`, `qvac-rag.datasource.ts` |
+| RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
+| Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
+| Reproducibility + hardware setup instructions | ✅ | This README |
+| Complete artifacts (logs, demo, hardware proof) | 🚧 | See `/artifacts` |
 
-- **Embedding model**: EmbeddingGemma 300M (4-bit), loaded from Settings alongside CARpsy.
-- **Knowledge corpus**: curated OBD-II DTC knowledge in `src/data/knowledge/obd-knowledge.ts`,
-  ingested once into a persistent QVAC workspace.
-- **Retrieval**: `src/data/datasources/shimi.datasource.ts` — merges all 4 layers,
-  deduplicates, caps snippets at 300 chars each to stay within CARpsy's context window.
-- **Graceful degradation**: any layer failure returns `[]`; the assistant still answers
-  from live OBD data.
-
----
-
-## SHIMI — confidence-weighted knowledge tree
-
-SHIMI (*Semantic Hierarchical Index with Memory Integration*) is an on-device knowledge
-graph built from the OBD-II SKOS ontology. Each node tracks a confidence score updated
-by peer confirmations and Claude quality evaluations.
-
-```
-P0300 (Random Misfire)
-  └─ misfire_random  [confidence: 0.87]
-       ├─ ignition   [confidence: 0.91]
-       ├─ fuel_system [confidence: 0.74]
-       └─ powertrain  [confidence: 0.95]
-```
-
-When a DTC is active, SHIMI returns the highest-confidence content from the entire
-subtree — not just the exact code match. This means a P0301 query also retrieves
-ignition system and fuel system knowledge.
-
-Key files: `src/data/knowledge/shimi-tree.ts`, `src/data/knowledge/obd-ontology.ts`
+> Cloud (Claude API) is an optional enhancement only — every mandatory QVAC
+> inference path uses the on-device SDK exclusively.
 
 ---
 
-## Distributed RAG (Hypercore, opt-in)
+## What it does (feature list)
 
-OBDient extends local RAG with a **federated knowledge layer** built on
-[Hypercore](https://holepunch.to) and Hyperswarm. Each device maintains a local
-append-only feed of anonymous diagnostic chunks; instances discover each other via a
-shared DHT topic (`obdient-rag-v1`) and replicate feeds without a central server.
+- Connects to any ELM327 Bluetooth OBD-II adapter (Bluetooth Classic / SPP).
+- Streams **20 real-time OBD-II parameters** on a live dashboard (RPM, coolant,
+  speed, fuel trims, O2 sensors, catalyst temp, timing advance, …).
+- Reads and clears DTC trouble codes with severity classification.
+- Generates a natural-language diagnostic assessment **on-device** with CARpsy.
+- **Multi-agent chat** + **4-layer knowledge retrieval** on every response.
+- **Human distillation:** 👍/👎 feedback updates SHIMI confidence; verified
+  knowledge is separated from unverified.
+- Voice output and hands-free alerts while driving.
+- Decodes VIN (make / model / year / plant) via local lookup + Vincario API.
+- Auto-disconnects after a configurable idle period (RPM = 0) to protect the battery.
+- **Persistent sessions** saved to local SQLite for later review in Reports.
 
-**Privacy contract:**
-- Chunks never include VIN, Bluetooth address, or any user identifier.
-- Only DTC code, make, approximate year range, anonymised assessment text, and a
-  confidence score are shared.
-- Joining the network and contributing knowledge are **separate opt-in toggles** (both off by default).
-- Remote chunks must reach `confirmations ≥ 3` before surfacing in context.
-
-> Current status: Hypercore/Hyperswarm are stubbed in the APK (no Node.js runtime in Hermes).
-> SHIMI tree, SKOS, trust registry, pattern evaluator, and local RAG all work fully.
+The car's data never leaves the device without explicit consent.
 
 ---
 
@@ -189,9 +209,9 @@ shared DHT topic (`obdient-rag-v1`) and replicate feeds without a central server
 | Relative Throttle | `0145` | % |
 | Ambient Temperature | `0146` | °C |
 
-Alert thresholds: LTFT/STFT ±15%, catalyst temp >900°C, fuel level <10%, battery
-voltage out of range. Alerts are evaluated declaratively per-PID in
-`src/core/constants/pids.ts` — never hardcoded into the model's prompt.
+Alert thresholds (LTFT/STFT ±15%, catalyst >900 °C, fuel <10%, battery out of range)
+are declared per-PID in `src/core/constants/pids.ts` — never hardcoded into the
+model's prompt.
 
 ---
 
@@ -204,66 +224,29 @@ src/
 ├── app/            # expo-router screens (dashboard, diagnostics, reports, settings)
 ├── core/           # constants (PIDs), errors, types, OBD/DTC parsers
 ├── domain/         # entities, repository interfaces, use cases (pure TS)
-├── data/           # datasources (QVAC, RAG, Claude API, Hypercore, BT, DB), repositories
+├── data/           # datasources (QVAC, RAG, Claude, Hypercore, BT, DB), repositories
 ├── presentation/   # components, hooks, providers, view-models
 └── store/          # Zustand stores (obd, session, settings)
-```
-
-### Key data flow
-
-```
-ELM327 (BT) → OBDRepositoryImpl → obdStore
-                                        ↓
-                              useDiagnosticsVM
-                                        ↓
-                              MultiAgentChatUseCase
-                              ├── QueryRouter.classifyQuery()
-                              │
-                              ├── [diagnostic] ChatWithQVACUseCase
-                              │     └── LLMRepositoryImpl
-                              │           ├── ShimiDataSource.search()
-                              │           │   ├── Layer 0: claudeKnowledge
-                              │           │   ├── Layer 1: shimiTree (SKOS)
-                              │           │   ├── Layer 2: qvacRag (embeddings)
-                              │           │   └── Layer 3: evaluatePatterns()
-                              │           └── qvacSDK.chat()  ← on-device LLM
-                              │
-                              └── [general] ClaudeAPIDataSource
-                                    └── answer → claudeKnowledge.store()
-                                                      ↓
-                                                  SHIMI Layer 0 (offline reuse)
-                                    [background] evaluateResponse()
-                                                  ↓
-                                              correction → SHIMI Layer 0
 ```
 
 ---
 
 ## Hardware requirements
 
-| Item         | Requirement                                              |
-|--------------|----------------------------------------------------------|
-| OS           | Android 10+ (`minSdkVersion 29`)                         |
-| RAM          | 4 GB minimum, 6 GB+ recommended                          |
-| Connectivity | Bluetooth Classic (for ELM327 adapter)                   |
-| Free storage | ~1 GB for on-device models                               |
+| Item | Requirement |
+|------|-------------|
+| OS | Android 10+ (`minSdkVersion 29`) |
+| RAM | 4 GB minimum, 6 GB+ recommended |
+| Connectivity | Bluetooth Classic (for ELM327 adapter) |
+| Free storage | ~1 GB for on-device models |
 
 > A **physical Android device is required.** Bluetooth Classic and native modules
-> (QVAC SDK Bare runtime, MMKV) do not work on the Android emulator or Expo Go.
+> (QVAC SDK Bare runtime, MMKV) don't work on the Android emulator or Expo Go.
 
-**OBD-II adapter:** Standard ELM327 Bluetooth (Classic, not BLE-only). Pair in
-Android Settings → Bluetooth first (typical PIN: `1234` or `0000`).
-
-> Tested with this [ELM327 Bluetooth OBD-II adapter](https://www.amazon.com/-/es/Bluetooth-herramienta-diagn%C3%B3stico-autom%C3%A1tico-verificaci%C3%B3n/dp/B07CP5ZJVQ)
-> (ASIN `B07CP5ZJVQ`). Any Bluetooth Classic ELM327 clone should work.
-
----
-
-## Prerequisites
-
-- **Node.js 20+** and npm
-- **JDK 17** and **Android SDK** (Android Studio) with USB debugging set up
-- A physical Android phone with developer mode enabled
+**OBD-II adapter:** standard ELM327 Bluetooth (Classic, not BLE-only). Pair in
+Android Settings → Bluetooth first (typical PIN `1234` or `0000`). Tested with
+[this adapter](https://www.amazon.com/-/es/dp/B07CP5ZJVQ) (ASIN `B07CP5ZJVQ`); any
+Bluetooth Classic ELM327 clone should work.
 
 ---
 
@@ -277,30 +260,23 @@ cd OBDient
 # 2. Install dependencies
 npm install
 
-# 3. Configure environment
+# 3. Configure environment (optional — diagnostics work fully offline)
 cp .env.example .env
-# Edit .env — add your Anthropic key for Claude cloud features (optional).
-# AI diagnostics work fully offline without any API keys.
+# Add your Anthropic key for Claude cloud features if you want them.
 
-# 4. Connect Android phone via USB (USB debugging ON), then:
+# 4. Connect an Android phone via USB (USB debugging ON), then:
 npm run android
-# Builds a custom dev client with Gradle and installs it on the phone.
-# First build takes several minutes.
 ```
 
 On the device:
 
 1. **Settings → QVAC Assistant → Load model** — downloads CARpsy once (~400 MB).
-2. Plug ELM327 into the car's OBD-II port and turn ignition on.
-3. Pair adapter in Android Bluetooth settings (PIN `1234`).
-4. **Settings → Scan Paired Devices** → tap adapter to connect.
-5. Go to **Dashboard / Diagnostics** — live data and AI chat are ready.
-
-To enable Claude cloud features:
-
-6. **Settings → Claude AI** — paste your Anthropic API key.
-   General questions now route to Claude; quality evaluation runs in background.
-   The badge shows how many knowledge entries CARpsy has learned from Claude.
+2. Plug the ELM327 into the car's OBD-II port and turn the ignition on.
+3. Pair the adapter in Android Bluetooth settings (PIN `1234`).
+4. **Settings → Scan Paired Devices** → tap the adapter to connect.
+5. Open **Dashboard / Diagnostics** — live data and AI chat are ready.
+6. *(Optional)* **Settings → Claude AI** — paste your Anthropic key to enable the
+   cloud Generalist and background Quality-Evaluator.
 
 ---
 
@@ -308,11 +284,11 @@ To enable Claude cloud features:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `EXPO_PUBLIC_VINCARIO_API_KEY` | No | Online VIN decode (Vincario API) |
-| `EXPO_PUBLIC_VINCARIO_SECRET_KEY` | No | Online VIN decode (Vincario API) |
+| `EXPO_PUBLIC_VINCARIO_API_KEY` | No | Online VIN decode (Vincario) |
+| `EXPO_PUBLIC_VINCARIO_SECRET_KEY` | No | Online VIN decode (Vincario) |
 | `EXPO_PUBLIC_ANTHROPIC_API_KEY` | No | Claude cloud fallback + quality evaluator |
 
-Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — runs fully on-device.
+Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — it runs fully on-device.
 
 ---
 
@@ -327,44 +303,13 @@ Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — runs fully on-devic
 
 ---
 
-## Hackathon compliance (QVAC requirements)
+## Documentation
 
-| Requirement | Status | Where |
-|---|---|---|
-| All primary AI inference via QVAC SDK | ✅ | `qvac-sdk.datasource.ts`, `qvac-rag.datasource.ts` |
-| RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
-| Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
-| Reproducibility + hardware setup instructions | ✅ | This README |
-| Complete artifacts (logs, demo, hardware proof) | 🚧 | See `/artifacts` |
-
-> Cloud (Claude API) is an optional enhancement layer only — all mandatory QVAC
-> inference paths use the on-device SDK exclusively.
-
----
-
-## Roadmap — toward a self-sufficient CARpsy
-
-The long-term goal is for the on-device model to handle the diagnostic domain on its
-own, so the cloud agent (Claude) becomes rarely needed. The strategy separates two
-things: **knowledge** (what CARpsy knows — grows with use) and **reasoning** (the fixed
-0.6B weights — only fine-tuning moves them). The cloud reduces calls; fine-tuning
-raises the floor; **independent verification** (a human, and the car's own physical
-outcome) keeps unverified content from gaining false authority.
-
-| Step | What | Status |
-|------|------|--------|
-| 1 | Separate *verified* (curated) from *unverified* (Claude) knowledge in the prompt | ✅ Done |
-| 2 | Human feedback 👍/👎 that moves SHIMI/Claude confidence | ✅ Done |
-| 3 | Semantic retrieval of Claude-learned answers (RAG workspace) | ✅ Done |
-| 4 | Ground-truth outcome — did the repair work? (passive DTC-recurrence detection) | 🔲 Planned |
-| 5 | Confidence-gated promotion — only verified knowledge becomes "trusted" | 🔲 Planned |
-| 6 | Dependency metric — % of queries still escalating to Claude | 🔲 Planned |
-| 7 | Fine-tuning loop — distill verified Q→A pairs into CARpsy's weights | 🔲 Planned |
-
-The virtuous cycle: **Claude teaches → human/car verifies → SHIMI accumulates → CARpsy
-is retrained → Claude is needed less → repeat.**
-
-📄 Full detail, rationale, and the three "asymptotes" in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+- 🧠 **[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)** — full intelligence architecture
+  (two-agent system, 4-layer retrieval, quality-evaluator loop, data flow).
+- 🗺️ **[docs/ROADMAP.md](docs/ROADMAP.md)** — the path toward a self-sufficient CARpsy.
+- ✅ **[docs/QA-agent-intelligence.md](docs/QA-agent-intelligence.md)** — change log of
+  every improvement to the AI stack.
 
 ---
 
