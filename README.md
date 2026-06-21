@@ -267,6 +267,24 @@ Bluetooth Classic ELM327 clone should work.
 
 ## Setup & run
 
+### ⬇️ Quickest path — download the APK
+
+No dev environment needed. Grab the pre-built release and install it on an Android phone:
+
+> **📦 [Download OBDient APK (latest release)](https://github.com/gazzimon/OBDient/releases/download/v1.0-hackathon/obdient-release.apk)** (~490 MB)
+>
+> Or browse the [Releases page](https://github.com/gazzimon/OBDient/releases/tag/v1.0-hackathon).
+
+1. Download the APK, copy it to the phone, and install it (allow "install from unknown sources").
+2. Open the app → **Settings → QVAC Assistant → Load model** (downloads CARpsy once, ~400 MB).
+3. Pair the ELM327 in Android Bluetooth settings (PIN `1234`), then **Settings → Scan Paired Devices** → tap the adapter.
+
+> The APK is signed with the standard Android **debug key**, so Android may warn it's
+> from an unidentified developer — expected for a hackathon artifact. A **physical
+> Android device is required** (Bluetooth Classic + the QVAC runtime don't work on emulators).
+
+### 🛠️ Build from source
+
 ```bash
 # 1. Clone
 git clone https://github.com/gazzimon/OBDient.git
