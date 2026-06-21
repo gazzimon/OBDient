@@ -1,6 +1,6 @@
 # OBDient 🚗🧠
 
-> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md)
+> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 **Your car, explained — privately, on your phone.**
 

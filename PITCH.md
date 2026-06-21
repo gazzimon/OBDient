@@ -1,6 +1,6 @@
 🚗🧠 OBDient — The brain of the car
 
-📄 [README](./README.md) · 🎤 Pitch (you are here) · 🧠 [Vision](./VISION.md)
+📄 [README](./README.md) · 🎤 Pitch (you are here) · 🧠 [Vision](./VISION.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 
 🎯 LOGLINE

@@ -1,6 +1,6 @@
 # OBDient — We're building the brain of the car 🚗🧠
 
-> 📄 [README](./README.md) · 🎤 [Pitch](./PITCH.md) · **🧠 Vision (you are here)**
+> 📄 [README](./README.md) · 🎤 [Pitch](./PITCH.md) · **🧠 Vision (you are here)** · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 > Every car already has a nervous system. We're giving it a mind.
 
