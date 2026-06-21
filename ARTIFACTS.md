@@ -69,11 +69,33 @@ quality evaluation. Real lines from
 > diagnostic path** and no context overflow. See
 > [artifacts/logs/README.md](artifacts/logs/README.md) to reproduce or verify.
 
+### Structured performance audit (`audit-*.jsonl`)
+
+Beyond the human-readable lines, the app emits a **machine-parseable audit record**
+per model lifecycle and inference event (tagged `[AUDIT]`, one JSON object per line —
+see [`src/core/utils/audit-log.ts`](src/core/utils/audit-log.ts)). Real records from
+[`artifacts/logs/audit-20260621-134310.jsonl`](artifacts/logs/audit-20260621-134310.jsonl):
+
+```jsonc
+{"event":"model_load","modelId":"ffe5e08fe94ddb38","src":"…CARpsy…Q4_K_M.gguf","load_ms":9681}
+{"event":"inference","prompt_chars":3176,"prompt_tokens_est":794,"completion_tokens":74,
+ "ttft_ms":29772,"total_ms":36268,"tokens_per_sec":2}
+{"event":"inference","prompt_chars":3414,"prompt_tokens_est":854,"completion_tokens":77,
+ "ttft_ms":32122,"total_ms":38770,"tokens_per_sec":2}
+```
+
+Captured: **model load (9.7 s)** + per-call **prompt size, completion tokens,
+time-to-first-token, total latency and throughput**. The TTFT figures make the cost
+structure explicit — on this 0.6B model at `ctx_size=4096`, ~80% of each call is
+prompt **prefill**, not generation (real generation ≈ 11 tok/s; the `tokens_per_sec`
+field is end-to-end). Generate the file with `./scripts/extract-audit.ps1`.
+
 ---
 
 ## ✅ QVAC mandatory-requirements checklist
 
 - [x] All primary AI inference via QVAC SDK — `[QVAC] On-device inference` lines in the log
+- [x] Structured performance audit — `audit-*.jsonl` (model loads, prompt/tokens/TTFT/tok-s)
 - [x] RAG via QVAC SDK — `[RAG] retrieval` lines (4-layer pipeline)
 - [x] Mobile track hardware — physical phone + ELM327 + real car (photos above)
 - [x] Full reproducibility + hardware setup — [README](./README.md) · [hardware/](artifacts/hardware/README.md)

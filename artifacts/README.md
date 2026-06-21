@@ -59,11 +59,17 @@ Key evidence lines (real lines from [`logs/session-20260621-124953.log`](logs/se
 [QualityEval] Score 3/5 — response acceptable
 ```
 
+A **structured performance audit** ([`logs/audit-20260621-134310.jsonl`](logs/audit-20260621-134310.jsonl))
+records the same activity as machine-parseable JSON — model loads + per-call prompt
+size, completion tokens, **time-to-first-token**, latency and throughput. See
+[logs/README.md](logs/README.md#structured-audit-log-audit-jsonl).
+
 ---
 
 ## ✅ QVAC mandatory-requirements checklist
 
 - [x] All primary AI inference via QVAC SDK — see `logs/` (`[QVAC]` lines)
+- [x] Structured performance audit — see `logs/audit-*.jsonl` (loads, tokens, TTFT, tok/s)
 - [x] RAG via QVAC SDK — see `logs/` (`[RAG]` lines)
 - [x] Mobile track hardware constraints — physical phone + ELM327 (video + `hardware/`)
 - [x] Full reproducibility + hardware setup — [../README.md](../README.md)

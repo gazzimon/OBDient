@@ -1,6 +1,6 @@
 # OBDient 🚗🧠
 
-> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 📸 [Artifacts](./ARTIFACTS.md) · 🌎 [Mission](./MISSION.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
+> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 📸 [Artifacts](./ARTIFACTS.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 **Your car, explained — privately, on your phone.**
 
@@ -171,6 +171,7 @@ and background quality evaluation only.
 | All primary AI inference via QVAC SDK | ✅ | `qvac-sdk.datasource.ts`, `qvac-rag.datasource.ts` |
 | RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
 | Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
+| Structured performance audit (loads, tokens, TTFT, tok/s) | ✅ | `audit-*.jsonl` via `src/core/utils/audit-log.ts` |
 | Reproducibility + hardware setup instructions | ✅ | This README |
 | Complete artifacts (logs, demo, hardware proof) | ✅ | [ARTIFACTS.md](./ARTIFACTS.md) — photos, screenshots, on-device logs, demo video |
 
@@ -314,6 +315,8 @@ Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — it runs fully on-de
 | `npm start` | Start Metro bundler only |
 | `npm test` | Run Jest test suite |
 | `npm run db:generate` | Generate Drizzle SQLite migrations |
+| `./scripts/capture-logs.ps1` | Capture an on-device runtime session to `artifacts/logs/` |
+| `./scripts/extract-audit.ps1` | Extract the structured `audit-*.jsonl` (loads, tokens, TTFT, tok/s) from a session log |
 
 ---
 
@@ -335,8 +338,7 @@ building human-centered, **"AI for the edge"** solutions and mentoring the next
 generation of local developers. Privacy-respecting, on-device intelligence —
 OBDient is exactly that philosophy applied to your car.
 
-We're hiring senior developers and architects who share the vision →
-read the **[Mission](./MISSION.md)** or reach us at
+We're hiring senior developers and architects who share the vision → reach us at
 [wa.me/5493764876249](https://wa.me/5493764876249).
 
 ---
