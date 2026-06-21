@@ -43,3 +43,7 @@ src/data/db/migrations/
 # generated native folders
 /ios
 /android
+
+# build artifacts (too large for git — distributed via GitHub Releases)
+*.apk
+*.aab

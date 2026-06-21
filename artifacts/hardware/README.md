@@ -108,10 +108,15 @@ Expo Go.
 
 ### Option A — Standalone APK (no dev environment needed)
 
-A pre-built **release** APK is provided in this folder: [`obdient-release.apk`](./obdient-release.apk).
-The JavaScript bundle is compiled into the APK, so it runs **without Metro**.
+A pre-built **release** APK (~486 MB — the QVAC on-device runtime ships native
+libraries for every modality) is published on the project's GitHub Releases:
+**https://github.com/gazzimon/OBDient/releases** . The JavaScript bundle is compiled
+into the APK, so it runs **without Metro**.
 
-1. Copy the APK to the phone and install it (allow "install from unknown sources").
+> It's too large for the git repo (GitHub's 100 MB file limit), so it lives as a
+> Release asset, not in this folder.
+
+1. Download the APK from Releases, copy it to the phone, and install it (allow "install from unknown sources").
 2. Open the app → **Settings → QVAC Assistant → Load model** (downloads CARpsy once, ~400 MB).
 3. Pair the ELM327 in Android Bluetooth settings (PIN `1234`).
 4. **Settings → Scan Paired Devices** → tap the adapter → open Dashboard / Diagnostics.
