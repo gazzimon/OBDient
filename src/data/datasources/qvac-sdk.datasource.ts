@@ -19,6 +19,7 @@ import {
   QvacUnavailableError,
   QvacRequestError,
 } from '@/core/errors/obd.errors';
+import { audit, estimateTokens } from '@/core/utils/audit-log';
 import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
 
@@ -101,10 +102,12 @@ export class QvacSDKDataSource {
           modelConfig: { ctx_size: MODEL_CTX_SIZE },
         });
         this.loadProgress = 1;
+        const loadMs = Date.now() - startedAt;
         // Artifact log: proves the model was loaded ON-DEVICE via the QVAC SDK.
         console.log(
-          `[QVAC] Model loaded on-device in ${Date.now() - startedAt}ms — src=${modelSrc} modelId=${this.modelId}`,
+          `[QVAC] Model loaded on-device in ${loadMs}ms — src=${modelSrc} modelId=${this.modelId}`,
         );
+        audit({ event: 'model_load', modelId: this.modelId, src: modelSrc, load_ms: loadMs });
         onProgress?.(1);
       } catch (err) {
         this.loadingPromise = null;
@@ -123,12 +126,14 @@ export class QvacSDKDataSource {
   private async reloadModel(): Promise<void> {
     this.modelId = null;
     this.loadingPromise = null;
+    const startedAt = Date.now();
     this.modelId = await loadModel({
       modelSrc: this.lastModelSrc,
       modelType: 'llamacpp-completion',
       modelConfig: { ctx_size: MODEL_CTX_SIZE },
     });
     this.loadProgress = 1;
+    audit({ event: 'model_load', modelId: this.modelId, src: this.lastModelSrc, load_ms: Date.now() - startedAt });
   }
 
   // Run a streaming completion with one automatic reload-and-retry. The bare-kit
@@ -137,21 +142,38 @@ export class QvacSDKDataSource {
   private async streamCompletion(
     llmHistory: { role: 'system' | 'user' | 'assistant'; content: string }[],
   ): Promise<string> {
+    // Prompt size for the audit record (chars known exactly; tokens estimated).
+    const promptChars = llmHistory.reduce((n, m) => n + m.content.length, 0);
+
     const run = async (): Promise<string> => {
       const startedAt = Date.now();
+      let firstTokenAt: number | null = null;
       let text = '';
       let tokenCount = 0;
       const result = completion({ modelId: this.modelId!, history: llmHistory, stream: true });
       for await (const token of result.tokenStream) {
+        if (firstTokenAt === null) firstTokenAt = Date.now(); // TTFT marker
         text += token;
         tokenCount++;
       }
       // Artifact log: proves inference ran ON-DEVICE and records throughput.
       const ms = Date.now() - startedAt;
-      const tps = ms > 0 ? (tokenCount / (ms / 1000)).toFixed(1) : '—';
+      const tpsNum = ms > 0 ? tokenCount / (ms / 1000) : 0;
+      const tps = ms > 0 ? tpsNum.toFixed(1) : '—';
+      const ttftMs = firstTokenAt !== null ? firstTokenAt - startedAt : null;
       console.log(
         `[QVAC] On-device inference: ${tokenCount} tokens in ${ms}ms (${tps} tok/s) modelId=${this.modelId}`,
       );
+      audit({
+        event: 'inference',
+        modelId: this.modelId!,
+        prompt_chars: promptChars,
+        prompt_tokens_est: estimateTokens(promptChars),
+        completion_tokens: tokenCount,
+        ttft_ms: ttftMs,
+        total_ms: ms,
+        tokens_per_sec: Number(tpsNum.toFixed(1)),
+      });
       return text;
     };
 
@@ -179,12 +201,14 @@ export class QvacSDKDataSource {
   // Free RAM — call when the app goes to background or the user navigates away.
   async dispose(): Promise<void> {
     if (this.modelId === null) return;
+    const unloadedId = this.modelId;
     try {
       await unloadModel({ modelId: this.modelId });
     } finally {
       this.modelId = null;
       this.loadingPromise = null;
       this.loadProgress = 0;
+      audit({ event: 'model_unload', modelId: unloadedId });
     }
   }
 

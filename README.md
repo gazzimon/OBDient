@@ -1,6 +1,6 @@
 # OBDient 🚗🧠
 
-> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 📸 [Artifacts](./ARTIFACTS.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
+> **📄 README (you are here)** · 🎤 [Pitch](./PITCH.md) · 🧠 [Vision](./VISION.md) · 📸 [Artifacts](./ARTIFACTS.md) · 🌎 [Mission](./MISSION.md) · 🔧 [Reproducibility](./artifacts/hardware/README.md)
 
 **Your car, explained — privately, on your phone.**
 
@@ -324,6 +324,20 @@ Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — it runs fully on-de
 - 🗺️ **[docs/ROADMAP.md](docs/ROADMAP.md)** — the path toward a self-sufficient CARpsy.
 - ✅ **[docs/QA-agent-intelligence.md](docs/QA-agent-intelligence.md)** — change log of
   every improvement to the AI stack.
+
+---
+
+## Built by FIUI 🌎
+
+OBDient is built by **FIUI — Fundación Iniciativa Urbana Inteligente**
+([fiui.org.ar](https://fiui.org.ar)), a technology NGO in **Misiones, Argentina**
+building human-centered, **"AI for the edge"** solutions and mentoring the next
+generation of local developers. Privacy-respecting, on-device intelligence —
+OBDient is exactly that philosophy applied to your car.
+
+We're hiring senior developers and architects who share the vision →
+read the **[Mission](./MISSION.md)** or reach us at
+[wa.me/5493764876249](https://wa.me/5493764876249).
 
 ---
 

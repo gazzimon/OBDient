@@ -55,6 +55,43 @@ The excerpts below are **real lines from the captured session**:
 > Android) plus QVAC SDK native tags, so both the JS-side evidence and the native
 > SDK activity are recorded.
 
+## Structured audit log (`audit-*.jsonl`)
+
+Alongside the human-readable `[QVAC]` lines, the app emits a **machine-parseable
+audit record** for every model lifecycle and inference event, tagged `[AUDIT]`
+(see [`src/core/utils/audit-log.ts`](../../src/core/utils/audit-log.ts)). One JSON
+object per line:
+
+```jsonc
+{"ts":"…","event":"model_load","modelId":"…","src":"…CARpsy…Q4_K_M.gguf","load_ms":9429}
+{"ts":"…","event":"inference","modelId":"…","prompt_chars":2317,"prompt_tokens_est":580,
+ "completion_tokens":78,"ttft_ms":1840,"total_ms":41026,"tokens_per_sec":1.9}
+{"ts":"…","event":"model_unload","modelId":"…"}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `event` | `model_load` · `model_unload` · `inference` |
+| `load_ms` | model load time (load events) |
+| `prompt_chars` / `prompt_tokens_est` | prompt size (tokens ≈ chars/4 — the SDK exposes no tokenizer to JS) |
+| `completion_tokens` | tokens generated |
+| `ttft_ms` | **time-to-first-token** |
+| `total_ms` / `tokens_per_sec` | full latency + throughput |
+
+The `[AUDIT]` lines ride the same `ReactNativeJS` logcat tag, so the normal capture
+already records them. To pull a clean `.jsonl` out of a captured session:
+
+```powershell
+./scripts/extract-audit.ps1            # newest session-*.log → artifacts/logs/audit-<stamp>.jsonl
+```
+```bash
+./scripts/extract-audit.sh             # macOS / Linux
+```
+
+> The committed `session-…124953.log` predates the audit instrumentation, so it has
+> no `[AUDIT]` lines — capture one fresh session on the audit build to produce an
+> `audit-*.jsonl`.
+
 ## Verify it yourself
 
 After capturing (or against the committed log), confirm the on-device inference line
