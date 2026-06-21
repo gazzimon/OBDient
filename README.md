@@ -9,6 +9,12 @@ for the core diagnosis.
 
 > Built for the Tether QVAC Hackathon — **Mobile track**.
 
+### 🎥 Watch the 2-minute demo
+
+[![OBDient demo — on-device AI car diagnostics](https://img.youtube.com/vi/AU2e477oyn0/maxresdefault.jpg)](https://youtu.be/AU2e477oyn0)
+
+> Real phone, real ELM327 adapter, real car — diagnosing live, fully on-device.
+
 ---
 
 ## Why OBDient is different
@@ -158,7 +164,7 @@ and background quality evaluation only.
 | RAG via QVAC SDK | ✅ | `qvac-rag.datasource.ts` + SHIMI 4-layer pipeline |
 | Runs on real consumer hardware (Mobile track) | ✅ | Android phone + ELM327 |
 | Reproducibility + hardware setup instructions | ✅ | This README |
-| Complete artifacts (logs, demo, hardware proof) | 🚧 | See `/artifacts` |
+| Complete artifacts (logs, demo, hardware proof) | ✅ | [artifacts/](artifacts/) — demo video, on-device logs, hardware proof |
 
 > Cloud (Claude API) is an optional enhancement only — every mandatory QVAC
 > inference path uses the on-device SDK exclusively.

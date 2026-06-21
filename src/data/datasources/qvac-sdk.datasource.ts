@@ -86,9 +86,14 @@ export class QvacSDKDataSource {
     this.lastModelSrc = modelSrc;
 
     this.loadingPromise = (async () => {
+      const startedAt = Date.now();
       try {
         this.modelId = await loadModel({ modelSrc, modelType: 'llamacpp-completion' });
         this.loadProgress = 1;
+        // Artifact log: proves the model was loaded ON-DEVICE via the QVAC SDK.
+        console.log(
+          `[QVAC] Model loaded on-device in ${Date.now() - startedAt}ms — src=${modelSrc} modelId=${this.modelId}`,
+        );
         onProgress?.(1);
       } catch (err) {
         this.loadingPromise = null;
@@ -118,11 +123,20 @@ export class QvacSDKDataSource {
     llmHistory: { role: 'system' | 'user' | 'assistant'; content: string }[],
   ): Promise<string> {
     const run = async (): Promise<string> => {
+      const startedAt = Date.now();
       let text = '';
+      let tokenCount = 0;
       const result = completion({ modelId: this.modelId!, history: llmHistory, stream: true });
       for await (const token of result.tokenStream) {
         text += token;
+        tokenCount++;
       }
+      // Artifact log: proves inference ran ON-DEVICE and records throughput.
+      const ms = Date.now() - startedAt;
+      const tps = ms > 0 ? (tokenCount / (ms / 1000)).toFixed(1) : '—';
+      console.log(
+        `[QVAC] On-device inference: ${tokenCount} tokens in ${ms}ms (${tps} tok/s) modelId=${this.modelId}`,
+      );
       return text;
     };
 

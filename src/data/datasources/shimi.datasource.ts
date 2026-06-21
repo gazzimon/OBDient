@@ -48,6 +48,12 @@ export class ShimiDataSource {
         }
       }
 
+      // Artifact log: proves the on-device RAG pipeline ran across all layers.
+      console.log(
+        `[RAG] retrieval (dtc=${dtcId ?? 'none'}): claude=${claudeResults.length} ` +
+          `shimi=${shimiResults.length} vector=${ragResults.length} → merged=${merged.length}`,
+      );
+
       return merged.slice(0, topK);
     } catch {
       return [];
@@ -83,6 +89,12 @@ export class ShimiDataSource {
           verified.push(r);
         }
       }
+
+      // Artifact log: proves provenance-split on-device RAG ran (verified vs unverified).
+      console.log(
+        `[RAG] retrieval (dtc=${dtcId ?? 'none'}): shimi=${shimiResults.length} ` +
+          `vector=${ragResults.length} → verified=${verified.length} unverified=${unverified.length}`,
+      );
 
       return { verified: verified.slice(0, topK), unverified };
     } catch {
