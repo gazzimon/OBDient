@@ -7,7 +7,7 @@ import { shimiDataSource } from '@/data/datasources/shimi.datasource';
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
 import { evaluatePatterns } from '@/data/datasources/pattern-evaluator';
 import { retrievalContext } from '@/data/knowledge/obd-ontology';
-import { isQvacError } from '@/core/errors/obd.errors';
+import { isQvacError, QvacUnavailableError } from '@/core/errors/obd.errors';
 import type { ILLMRepository, LLMInterpretationRequest, LLMInterpretationResult, LLMChatRequest } from '@/domain/repositories/i-llm.repository';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
 import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
@@ -129,8 +129,18 @@ export class LLMRepositoryImpl implements ILLMRepository {
     } catch (err) {
       if (isQvacError(err)) {
         console.error('[QVAC] chat() failed:', err);
+        // The model being unloaded and the prompt overflowing the context window
+        // are different failures — telling the user to "load the model" when it's
+        // already loaded just sends them in circles. Pick the message that matches.
+        const isContextOverflow =
+          err instanceof Error && /context.?overflow|context window/i.test(err.message);
+        const text = err instanceof QvacUnavailableError
+          ? 'QVAC is not available. Load the model in Settings to enable the assistant.'
+          : isContextOverflow
+            ? 'That question carried too much data for the on-device model. Try a shorter question, or tap ✕ to start a new conversation.'
+            : 'The on-device model could not answer that. Please try again.';
         return {
-          text: 'QVAC is not available. Load the model in Settings to enable the assistant.',
+          text,
           generatedAt: new Date(),
           isAiGenerated: false,
         };

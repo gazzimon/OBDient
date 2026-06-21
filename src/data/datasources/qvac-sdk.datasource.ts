@@ -34,6 +34,13 @@ const CARPSY_MODEL_URL =
   'https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF/resolve/main/CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf';
 const DEFAULT_MODEL = CARPSY_MODEL_URL;
 
+// The QVAC/llama.cpp default ctx_size is only 1024 tokens — too small for a
+// diagnostic prompt (system prompt + 20 live sensors + retrieved knowledge +
+// chat history) plus room to generate a reply, which overflows with
+// CONTEXT_OVERFLOW. Qwen3-0.6B supports far more, so we raise it; 4096 tokens
+// is ample headroom and costs only a few MB of extra KV cache at 0.6B.
+const MODEL_CTX_SIZE = 4096;
+
 const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
 You receive real-time OBD-II vehicle data and may or may not have fault codes.
 Respond in the same language the user writes in.
@@ -88,7 +95,11 @@ export class QvacSDKDataSource {
     this.loadingPromise = (async () => {
       const startedAt = Date.now();
       try {
-        this.modelId = await loadModel({ modelSrc, modelType: 'llamacpp-completion' });
+        this.modelId = await loadModel({
+          modelSrc,
+          modelType: 'llamacpp-completion',
+          modelConfig: { ctx_size: MODEL_CTX_SIZE },
+        });
         this.loadProgress = 1;
         // Artifact log: proves the model was loaded ON-DEVICE via the QVAC SDK.
         console.log(
@@ -112,7 +123,11 @@ export class QvacSDKDataSource {
   private async reloadModel(): Promise<void> {
     this.modelId = null;
     this.loadingPromise = null;
-    this.modelId = await loadModel({ modelSrc: this.lastModelSrc, modelType: 'llamacpp-completion' });
+    this.modelId = await loadModel({
+      modelSrc: this.lastModelSrc,
+      modelType: 'llamacpp-completion',
+      modelConfig: { ctx_size: MODEL_CTX_SIZE },
+    });
     this.loadProgress = 1;
   }
 
@@ -188,12 +203,27 @@ export class QvacSDKDataSource {
     const MAX_HISTORY = 6;
     const cappedHistory = history.slice(-MAX_HISTORY);
 
+    // Defense-in-depth against CONTEXT_OVERFLOW: even with the raised ctx_size,
+    // bound the injected context so an unusually large knowledge block can't push
+    // the prompt past the window (which would surface as a failed inference).
+    // ~4 chars/token; reserve room for the system prompt, history, and the reply.
+    const MAX_CONTEXT_CHARS = (MODEL_CTX_SIZE - 1024) * 4;
+    const boundedContext =
+      systemContext.length > MAX_CONTEXT_CHARS
+        ? systemContext.slice(0, MAX_CONTEXT_CHARS) + '\n…(context truncated to fit on-device model)'
+        : systemContext;
+    if (boundedContext !== systemContext) {
+      console.warn(
+        `[QVAC] systemContext truncated ${systemContext.length}→${MAX_CONTEXT_CHARS} chars to fit ctx_size=${MODEL_CTX_SIZE}`,
+      );
+    }
+
     // Close the systemContext "user" turn with an assistant ack before the real conversation.
     // Without this, the first real user message follows the context directly as a second consecutive
     // user turn — invalid chat format that confuses the model.
     const llmHistory = [
       { role: 'system' as const,    content: SYSTEM_PROMPT },
-      { role: 'user' as const,      content: systemContext },
+      { role: 'user' as const,      content: boundedContext },
       { role: 'assistant' as const, content: 'Understood. I have the vehicle data. How can I help?' },
       ...cappedHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     ];
