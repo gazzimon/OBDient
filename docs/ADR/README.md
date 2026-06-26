@@ -34,7 +34,8 @@ consume número de ADR.
 | 0003 | Seed peer — bootstrap del conocimiento social P2P | Propuesto | [0003-seed-peer-social-p2p.md](0003-seed-peer-social-p2p.md) |
 | 0004 | Learning loop sobre SHIMI (Beta-Binomial conjugado) | Propuesto | [0004-learning-loop-shimi.md](0004-learning-loop-shimi.md) |
 | 0005 | Memoria episódica por vehículo | Propuesto | [0005-memoria-episodica-vehiculo.md](0005-memoria-episodica-vehiculo.md) |
-| 0006 | Núcleo diagnóstico determinístico con dependencias inyectadas | Borrador | — (propuesto, sin redactar) |
+| 0006 | Núcleo diagnóstico determinístico con dependencias inyectadas | Propuesto | [0006-nucleo-deterministico-inyectable.md](0006-nucleo-deterministico-inyectable.md) |
+| 0007 | Firma y rotación de claves de los artefactos distribuidos | Propuesto | [0007-firma-y-rotacion-de-claves.md](0007-firma-y-rotacion-de-claves.md) |
 
 ### Documentos de plan relacionados (no son ADRs)
 
@@ -54,13 +55,14 @@ trabajo, no decoración:
 - ✅ **Formato `.md` + slug** adoptado: 0004 y 0005 renombrados desde `.txt`.
 - ✅ **0002 y 0003 asignados y redactados.** Cierran el salto 0001→0004: 0002
   (currículo del senior + RAG central) y 0003 (seed peer social P2P).
-- **ADR-0006 (núcleo determinístico inyectable)** está en borrador; al redactarlo,
-  explicitar que es prerequisito estructural de PLAN-001 (gate determinístico) y el
-  que consolida el `faultClassFor()` que ADR-0001 dejó como deuda.
+- ✅ **0006 y 0007 redactados.** 0006 (núcleo determinístico inyectable; prerequisito
+  estructural de PLAN-001 y consolidador del `faultClassFor()` que ADR-0001 dejó como
+  deuda) y 0007 (firma/rotación de claves; cierra el riesgo abierto en ADR-0003).
+- **Numeración al día:** 0001–0007 asignados y redactados; sin huecos.
 
 ## Coherencia entre ADRs (lectura cruzada)
 
-Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ PLAN-001:
+Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ 0006 ⋈ 0007 ⋈ PLAN-001:
 
 - ✅ **Principios alineados.** Offline-first, determinismo de la ruta de decisión,
   clock inyectado y aprendizaje/efectos siempre *post-hoc* son consistentes en todos
@@ -75,7 +77,10 @@ Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ PL
 - ✅ **0002 no contradice 0004.** El retrain de 0002 es **central/batch**; el
   invariante "sin fine-tuning on-device" de ADR-0004 §Alternativas se preserva. El
   fine-tuning local estilo Biomed-AI quedó explícitamente descartado en 0002.
-- ✅ **Cadena de dependencias clara.** PLAN-001/0006 consumen el `faultClass`.
+- ✅ **0006 consolida el `faultClass`.** El núcleo puro de ADR-0006 materializa el
+  `faultClassFor()` que ADR-0001 dejó como deuda y que PLAN-001 consume en el gate.
+- ✅ **0007 cierra el riesgo de 0003.** La firma/rotación de claves concreta el
+  "firmado" que 0002/0003 asumían y elimina la fragilidad de la clave hardcodeada.
 - ⚠️ **Drift de esquema `sessions` ↔ `diagnostic_session`.** ADR-0004 introduce una
   tabla `diagnostic_session` distinta de la `sessions` actual; ADR-0005 ya lo marca
   en su *Nota de reconciliación* y lo asigna a la Fase 0 de ADR-0004. **Ninguna de
@@ -86,14 +91,18 @@ Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ PL
 
 ## Pasos a seguir
 
-1. **Leer [ADR-0001](0001-causal-hypothesis-reificada.md)** — es la base: define el
-   modelo reificado del que cuelgan 0004, 0005 y 0006.
-2. **Redactar ADR-0006** (núcleo determinístico inyectable) tomando 0001 como
-   prerequisito; ahí se materializa `faultClassFor()`.
-3. **Decidir la reconciliación `sessions` ↔ `diagnostic_session`** (Fase 0 de
+Los siete ADRs están redactados (todos `Propuesto`, salvo 0001 `Aceptado`). Lo que
+queda es **implementación y dos decisiones de editor**:
+
+1. **Empezar por la Fase 0 de ADR-0006** (`faultClassFor()` puro) — cero cambio de
+   comportamiento, prerequisito de PLAN-001 y de todo el núcleo.
+2. **Decidir la reconciliación `sessions` ↔ `diagnostic_session`** (Fase 0 de
    ADR-0004) antes de materializar cualquier tabla nueva.
-4. **Evaluar si la firma/rotación de clave del seed (ADR-0003 §Riesgos)** amerita un
-   ADR-0007 de key-management propio.
+3. **Revisar como editor** dos puntos abiertos: si ADR-0002 se siente cargado
+   (RAG + destilación en una decisión), y confirmar el *pinning node* central de
+   ADR-0003.
+4. **Promover a `Aceptado`** los ADRs `Propuesto` que ya quieras fijar como
+   inmutables.
 
 ## Cómo abrir un ADR nuevo
 

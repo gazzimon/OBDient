@@ -5,7 +5,8 @@
 - **Deciders:** Gustavo (gazzimon)
 - **Relacionados:** ADR-0001 (nodos reificados que el senior emite con provenance),
   ADR-0003 (distribuye el bundle como seed peer), ADR-0004 (aprendizaje local
-  procedural — **complementario**, ver §Alternativas), PLAN-001 (manifiesto de skill)
+  procedural — **complementario**, ver §Alternativas), ADR-0007 (firma de los
+  artefactos publicados), PLAN-001 (manifiesto de skill)
 - **Repos afectados:** `gazzimon/OBDient` (`claude-api.datasource.ts`,
   `claude-knowledge.datasource.ts`, `qvac-sdk.datasource.ts` model src, pipeline de
   build), `gazzimon/CARpsy` (retrain batch)
@@ -52,8 +53,8 @@ lo curado y lo aprendido, ni una forma reproducible de versionar el conocimiento
 ## Decisión
 
 Movemos el loop senior→junior de *efímero on-device* a un **pipeline de curaduría
-central (build-time)** que produce **dos artefactos versionados y firmados** que la
-app descarga y luego usa offline:
+central (build-time)** que produce **dos artefactos versionados y firmados** (la
+firma se especifica en ADR-0007) que la app descarga y luego usa offline:
 
 ### Artefacto 1 — Bundle RAG autoritativo (`knowledgeVersion vN`)
 

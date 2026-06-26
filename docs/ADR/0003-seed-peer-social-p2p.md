@@ -4,8 +4,8 @@
 - **Fecha:** 2026-06-25
 - **Deciders:** Gustavo (gazzimon)
 - **Relacionados:** ADR-0002 (genera el bundle que el seed distribuye), ADR-0001
-  (chunks reificados), ADR-0004/0005 (aprendizaje local — no se federan), posible
-  ADR-0007 (key management, ver §Riesgos)
+  (chunks reificados), ADR-0004/0005 (aprendizaje local — no se federan), ADR-0007
+  (firma y rotación de claves, ver §Riesgos)
 - **Repos afectados:** `gazzimon/OBDient` (`hypercore-knowledge.datasource.ts`,
   `trust-registry.ts`, bundle de la app, Settings)
 - **Influencias externas:** Handilusa/Biomed-AI (inferencia federada con fallback —
@@ -124,7 +124,7 @@ así que **distribuir el modelo por la misma malla P2P es una opción de roadmap
 - **Clave de semilla pre-trusteada y hardcodeada = punto de centralización y
   artefacto sensible.** Si se compromete, es autoritativa. Mitigación: **firma del
   bundle + rotación de clave** (la app valida la firma antes de confiar). El diseño
-  detallado de key-management puede ameritar un **ADR-0007** propio.
+  detallado de key-management **se especifica en ADR-0007**.
 - **Peer malicioso intenta envenenar el RAG** → ya mitigado por quorum + reputación
   dampeada de `trust-registry.ts`; el seed solo sube el piso de calidad, no relaja
   el gate del resto.
