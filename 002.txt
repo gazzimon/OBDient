@@ -1,0 +1,226 @@
+# PLAN-002: The second quality loop — field validation of a single diagnosis
+
+- **Status:** Draft / plan (NOT an ADR; see §ADRs to open)
+- **Date:** 2026-06-26
+- **Author:** architecture
+- **Builds on:** PLAN-001 (closed-loop arbiter pattern), ADR-0006 (deterministic core)
+- **Related:** ADR-0004 (post-hoc learning — fed by UX4 outcome capture), ADR-0008
+  (readiness/freeze-frame capture — to open). Future: ComputerPool integration (§7).
+
+================================================================================
+## 0. CONTEXT — first quality loop vs. second quality loop
+================================================================================
+
+OBDient already has a **first quality loop**: the senior→junior eval cycle. Claude
+audits CARpsy via `evaluateResponse()` (`claude-api.datasource.ts`), corrections are
+stored in `claude-knowledge.datasource.ts`, and the model is gated offline by
+`scripts/eval-carpsy.js`. That loop improves *the model*.
+
+It does **not** validate a given diagnosis against the real vehicle in front of the
+user. Today CARpsy emits free prose that is never checked against the live DTCs and
+sensor values (see PLAN-001 §0).
+
+PLAN-002 is the **next thing to build in the app**: a **second quality loop** that
+validates ONE diagnosis in the field — the closed-loop deterministic gate of PLAN-001
+/ ADR-0006 — before it reaches the user.
+
+**North star:** reliability of a single diagnosis (in-path gate).
+
+**Scope discipline.** Everything social/curation/learning (ADR-0002/0003/0004/0005/
+0007) stays a later track, frozen as `Propuesto · post-MVP` — it depends on traffic/
+corpus that does not exist yet. OBD hardware (readiness, freeze frame) enters as its
+own feature-flagged milestones, not in the gate MVP. Two workstreams PLAN-001 left
+implicit are made explicit here: the **UI/UX track** (§5) and the **ComputerPool
+future integration** (§7).
+
+**Editor decisions (already made):**
+- North star: reliability of one diagnosis (in-path gate).
+- Hardware staged: G1-G6 now (zero hardware); readiness (Mode 01 PID 01) first for its
+  anti-fraud value (reset cars / reseller use case); freeze frame (Mode 02) second
+  (adds diagnostic context); Mode 06 out (future predictive analysis).
+- Persistence: in-memory for the gate; materialize SQLite with Drizzle only when
+  ADR-0004/0005 need it, reusing the `storage.datasource.ts` pattern.
+- Output language: English.
+
+================================================================================
+## 1. CODE STRENGTHS THIS ROADMAP LEVERAGES
+================================================================================
+
+- **Hexagonal seam.** The gate slots in as a use case + pure service without touching
+  UI or data layers (`interpret-with-qvac.ts`, `i-llm.repository.ts`).
+- **Deterministic, already-tested substrate.** SKOS ontology with `ancestors()` /
+  `retrievalContext()` closure (`obd-ontology.ts`) + pure rule engine
+  (`pattern-evaluator.ts`). G1-G6 is the same `(hypothesis, ctx) → result` machinery.
+- **Provenance already split.** verified vs unverified (`searchWithProvenance()`); the
+  gate formalizes it.
+- **Graceful degradation everywhere.** Enables bounded retry + honest fallback without
+  breaking UX.
+- **First-class instrumentation.** `audit-log.ts` (TTFT, tok/s) measures retry
+  overhead; `eval-carpsy.js` is the A/B harness with a hallucination guard (TC-04).
+- **Mature Drizzle.** `storage.datasource.ts` (write queue, idempotent migrations) is
+  the pattern to extend when persistence is needed.
+
+================================================================================
+## 2. BACKEND ROADMAP — milestones (ordered by dependency and risk)
+================================================================================
+
+Each milestone ships alone and de-risks the next. No new hardware until M6.
+
+- **M0 — Deterministic `faultClassFor()`.** (PLAN-001 Phase 0 / ADR-0006 Phase 0).
+  Consolidate `dtcParser.classifySeverity()` + SKOS closure into
+  `src/domain/services/fault-class.ts`. Pure, table-tested, zero behavior change.
+  **Prerequisite of everything.** Risk LOW.
+- **M1 — Vehicle context classifier.** (Phase 1 / Pattern 3, "existing data" version).
+  `context-classifier.ts::classifyVehicleState(snapshot, dtcs): VehicleState` over
+  RPM/severity/alerts already read + entity in
+  `src/domain/entities/diagnostic-context.ts`. `readinessComplete` / `hasFreezeFrame`
+  stay `false` (inert). Pure. Risk LOW.
+- **M2 — Structured output, risk inverted.** (Phase 2 / Pattern 4). Entity
+  `diagnostic-hypothesis.ts`. Recommended approach: the gate first operates on
+  **partial extraction (regex of signals + injected `faultClass`)** — promote the
+  PLAN-001 §6 fallback to the MVP path; strict JSON (`proposeStructured()` in
+  `qvac-sdk.datasource.ts` with parse-repair) lands as an enhancement behind the same
+  interface. Removes the only HIGH item from the critical path. Risk MED.
+- **M3 — Gate G1-G6 + bounded closed-loop.** (Phases 3+6 / Patterns 1, 6).
+  `diagnostic-gate.ts` (pure `runGate(hypothesis, ctx)`) + `closed-loop-diagnose.ts`
+  (propose → gate → [retry|finalize], `MAX_RETRIES=2`, honest fallback), logging each
+  pass via `audit-log.ts`. **The differentiator and the core of the second quality
+  loop.** Risk MED. → promote ADR-0006 to `Accepted`.
+- **M4 — Split Generator/Advisor roles.** (Phase 4 / Pattern 2). Split the monolithic
+  `SYSTEM_PROMPT` into per-role prompts; A/B against the current one with
+  `eval-carpsy.js`. Quality optimization. Risk MED. Later / optional.
+- **M5 — Honest skill manifest.** (Phase 5 / Pattern 7). `qvac/addons.manifest.json` +
+  `docs/skills/diagnostic-closed-loop.md` with honest limits. Risk LOW.
+- **M6 — [feature-flag] Readiness (Mode 01 PID 01).** First hardware milestone. New
+  commands in `elm327.datasource.ts` + parser + PIDs. Enables G7 and the anti-fraud
+  case (reset cars, resellers). Behind a flag. Risk HIGH (ELM327). → ADR-0008.
+- **M7 — [feature-flag] Freeze frame (Mode 02).** Second hardware milestone: gives
+  context to the diagnosis (frozen conditions at DTC time). Enables G8. Behind a flag.
+  Risk HIGH. → ADR-0008 (phase 2).
+- **Out of scope:** Mode 06 (future predictive analysis). The `caseSignature` drift
+  (ADR-0004 assumes `freezeFrame.*`) is resolved by graceful degradation in `bucket()`,
+  not by hastily collecting freeze frame; G7-G8 stay inert while the flags are off.
+
+================================================================================
+## 3. GATE RULES (from PLAN-001 §2 — committed scope)
+================================================================================
+
+Committed now (logic + already-read data), implemented across M1-M3:
+- **G1** DTC↔faultClass coherent (closure membership).
+- **G2** Cited signals exist (anti-hallucination — highest value).
+- **G3** Severity coherence.
+- **G4** Live-alert coherence.
+- **G5** No-start vs RPM.
+- **G6** Confidence floor (soft signal).
+
+Behind feature flag (M6/M7, ADR-0008):
+- **G7** Readiness / drive-cycle completeness.
+- **G8** Freeze-frame validation against frozen conditions.
+
+================================================================================
+## 4. ADRs TO OPEN
+================================================================================
+
+- **ADR-0008 — "Readiness & freeze-frame capture (Mode 01 PID 01 / Mode 02; Mode 06
+  out)."** Hardware/protocol decision for M6/M7. Priority within: readiness first
+  (fraud detection for reset cars), freeze frame second, Mode 06 out. Resolves the
+  `caseSignature` `freezeFrame.*` drift by graceful degradation in `bucket()`.
+  NOTE: PLAN-001 §4 reserved 0007 for this, but 0007 was used for key signing — hence
+  a new number, 0008.
+- ADR-0006 is promoted to `Accepted` at M3 (the gate decision becomes immutable).
+
+================================================================================
+## 5. UI/UX WORKSTREAM (explicit — PLAN-001 deferred it; the ADRs assume it)
+================================================================================
+
+PLAN-001 is backend-only, yet the gate produces output that has **no surface today**,
+and ADR-0004 Phase 0 explicitly needs an outcome-capture UI ("what was the real
+cause?"). New UI follows the established QVAC aesthetic (IBM Plex Mono, mint `#2DE1A5`,
+outlined badges, 180° gauges, `SectionHeader` with mint underline). Each UX item pairs
+with the milestone that produces its data.
+
+- **UX0 (with M3) — Diagnostic hypothesis card.** Render `DiagnosticHypothesis`:
+  root-cause line, `supporting_signals` vs `contradicting_signals` (visually opposed),
+  a confidence meter (reuse the 180° gauge), and a gate-status badge
+  (passed / unconfirmed). Lives on the diagnostics/report screens (`src/app/(tabs)/`).
+- **UX1 (with M3) — Honest "unconfirmed" state.** When `MAX_RETRIES` is exhausted, show
+  the best hypothesis marked *not confirmed* + `recommended_checks` / missing signals
+  the gate reported. Never a dead end.
+- **UX2 (with M2/existing) — Provenance distinction.** Visually separate verified
+  knowledge from unverified (Claude-origin) hypotheses, mirroring the prompt's two
+  sections; keep the 👍/👎 feedback that already targets the source via
+  `confirmDtc`/`weakenDtc`.
+- **UX3 (optional, with M3) — Loop transparency.** A small "validated in N passes"
+  affordance, fed by the `audit-log` loop records — turns the gate into a visible trust
+  signal.
+- **UX4 (enables the next track) — Outcome capture.** The "what was the real cause?" UI
+  from ADR-0004 Phase 0. Pure capture into an append-only store; zero behavior change.
+  Starts accumulating the dataset the learning loop will need — the bridge from this
+  roadmap to the frozen tracks.
+
+================================================================================
+## 6. FROZEN TRACKS (post-MVP, no implementation in this roadmap)
+================================================================================
+
+ADR-0002 (central curation), ADR-0003 (P2P seed + pinning node), ADR-0004
+(Beta-Binomial), ADR-0005 (episodic memory), ADR-0007 (key signing/rotation). Stay
+`Propuesto`; promoted when traffic/corpus justifies them. UX4 (outcome capture) is the
+bridge that starts feeding ADR-0004. Associated SQLite is deferred; when it lands,
+extend the `storage.datasource.ts` Drizzle pattern.
+
+================================================================================
+## 7. FUTURE INTEGRATION — ComputerPool (QVAC Edge-AI P2P Delegation Mesh)
+================================================================================
+
+`freedanjeremiah/QVAC-Hackathon`: Worker (TS/Node, `@qvac/sdk`, decides local-vs-peer
+via `loadModel({delegate})` + `fallbackToLocal`) + Orchestrator (Python/FastAPI/
+MongoDB, OpenAI-compatible control plane) + Next.js dashboard. It lets a low-RAM device
+offload heavy inference to a higher-RAM peer, off-cloud, with graceful local fallback.
+
+**Why it fits OBDient:**
+- Same `@qvac/sdk` foundation and the **same JSONL audit format** OBDient already emits
+  (`audit-log.ts`) — instrumentation is interoperable out of the box.
+- Its local-vs-delegate decision is the **same shape** as OBDient's existing
+  on-device-vs-cloud router (`query-router.ts`). Natural extension: a **third route**
+  on-device / peer-mesh / cloud, with `fallbackToLocal` preserving the offline-first
+  thesis.
+- Concrete use: run a heavier model for the gate's Advisor reconsideration step (M4) or
+  for general questions on a peer instead of cloud Claude — off-cloud, strengthening the
+  privacy story.
+
+**Honest blockers (must be resolved before adoption):**
+- **Privacy contract.** ADR-0003 §Alternatives explicitly rejected live-query
+  federation: "sending a live query/diagnosis to a peer exposes vehicle data."
+  ComputerPool's delegation is exactly that. Integration requires either delegating only
+  non-PII/anonymized inference, or restricting delegation to user-owned/trusted devices.
+- **Centralized control plane.** The FastAPI+MongoDB orchestrator conflicts with
+  offline-first in the hot path; acceptable only out of the diagnostic hot path
+  (mitigated by `fallbackToLocal`), consistent with how ADR-0002/0003 declare their
+  single centralized pieces.
+
+**Disposition:** post-MVP exploration track (not a milestone of this roadmap). A
+candidate compute substrate for ADR-0002 (curation) and the Advisor tier, gated on
+resolving the privacy contract above.
+
+================================================================================
+## 8. VERIFICATION
+================================================================================
+
+- **M0/M1/M3 (pure logic):** table tests in `src/__tests__/` in the style of
+  `pattern-evaluator.test.ts` and `obd-ontology.test.ts`. Validate G1-G6 with
+  hypothesis↔context cases covering each rule (invented signal ⇒ rejection, etc.).
+- **M2 (structure):** test the regex extractor over real CARpsy outputs + the
+  `DiagnosticHypothesis` shape validator; verify the fallback by forcing non-parseable
+  output.
+- **M3 (loop overhead):** run on-device and read the `[AUDIT]` JSONL
+  (`scripts/extract-audit.ps1`) to confirm pass count and aggregate latency under
+  `MAX_RETRIES=2`.
+- **M4 (quality):** A/B with `node scripts/eval-carpsy.js` — split prompts must hold
+  ≥ 80% and not regress TC-04 (hallucination).
+- **M6/M7 (hardware):** on-device test with a real ELM327 behind the flag;
+  `readinessComplete` / `hasFreezeFrame` flip to `true` only with the flag on and data
+  present, and G7-G8 activate without breaking the G1-G6 path.
+- **UI/UX:** manual on-device walkthrough — hypothesis card renders supporting/
+  contradicting signals and gate badge; unconfirmed state always offers next checks;
+  provenance is visually distinct; outcome-capture (UX4) writes a record without
+  altering the diagnosis path.

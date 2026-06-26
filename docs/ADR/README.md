@@ -36,12 +36,14 @@ consume número de ADR.
 | 0005 | Memoria episódica por vehículo | Propuesto | [0005-memoria-episodica-vehiculo.md](0005-memoria-episodica-vehiculo.md) |
 | 0006 | Núcleo diagnóstico determinístico con dependencias inyectadas | Propuesto | [0006-nucleo-deterministico-inyectable.md](0006-nucleo-deterministico-inyectable.md) |
 | 0007 | Firma y rotación de claves de los artefactos distribuidos | Propuesto | [0007-firma-y-rotacion-de-claves.md](0007-firma-y-rotacion-de-claves.md) |
+| 0008 | Captura de readiness y freeze frame (Mode 01 PID 01 / Mode 02; Mode 06 fuera) | Propuesto | [0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md) |
 
 ### Documentos de plan relacionados (no son ADRs)
 
 | Doc | Título | Ubicación |
 |-----|--------|-----------|
 | PLAN-001 | Closed-loop con gate determinístico (patrón arbiter) | [../../001.txt](../../001.txt) |
+| PLAN-002 | Segundo lazo de calidad — validación en campo de un diagnóstico (gate, UI/UX, ComputerPool) | [../../002.txt](../../002.txt) |
 
 ## Huecos conocidos (deuda de disciplina)
 
@@ -58,7 +60,11 @@ trabajo, no decoración:
 - ✅ **0006 y 0007 redactados.** 0006 (núcleo determinístico inyectable; prerequisito
   estructural de PLAN-001 y consolidador del `faultClassFor()` que ADR-0001 dejó como
   deuda) y 0007 (firma/rotación de claves; cierra el riesgo abierto en ADR-0003).
-- **Numeración al día:** 0001–0007 asignados y redactados; sin huecos.
+- ✅ **0008 redactado.** [0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md)
+  toma la decisión de hardware (readiness Mode 01 PID 01 → freeze frame Mode 02; Mode 06 fuera) que
+  PLAN-001 §4 había reservado para 0007 antes de que 0007 se usara para firma de claves. Es el ADR de
+  los hitos M6/M7 de PLAN-002.
+- **Numeración al día:** 0001–0008 asignados y redactados; sin huecos.
 
 ## Coherencia entre ADRs (lectura cruzada)
 
@@ -91,18 +97,20 @@ Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ 00
 
 ## Pasos a seguir
 
-Los siete ADRs están redactados (todos `Propuesto`, salvo 0001 `Aceptado`). Lo que
-queda es **implementación y dos decisiones de editor**:
+Los ocho ADRs están redactados (todos `Propuesto`, salvo 0001 `Aceptado`). El roadmap
+de implementación lo fija **PLAN-002** ([../../002.txt](../../002.txt)): el segundo lazo
+de calidad (validación en campo de un diagnóstico vía el gate determinístico), con la
+columna social/aprendizaje (0002/0003/0004/0005/0007) **congelada como post-MVP**.
 
-1. **Empezar por la Fase 0 de ADR-0006** (`faultClassFor()` puro) — cero cambio de
-   comportamiento, prerequisito de PLAN-001 y de todo el núcleo.
-2. **Decidir la reconciliación `sessions` ↔ `diagnostic_session`** (Fase 0 de
-   ADR-0004) antes de materializar cualquier tabla nueva.
-3. **Revisar como editor** dos puntos abiertos: si ADR-0002 se siente cargado
-   (RAG + destilación en una decisión), y confirmar el *pinning node* central de
-   ADR-0003.
-4. **Promover a `Aceptado`** los ADRs `Propuesto` que ya quieras fijar como
-   inmutables.
+1. **Empezar por M0 de PLAN-002** = Fase 0 de ADR-0006 (`faultClassFor()` puro) — cero
+   cambio de comportamiento, prerequisito de todo el núcleo.
+2. **Seguir el orden M0 → M3** (clasificador de contexto → salida estructurada con riesgo
+   invertido → gate G1-G6 + lazo acotado). Persistencia in-memory; SQLite se difiere.
+3. **Hardware detrás de feature flag** (M6/M7) según ADR-0008: readiness primero
+   (anti-fraude), freeze frame después; Mode 06 fuera.
+4. **Promover ADR-0006 a `Aceptado`** al completar M3 (la decisión del gate se fija).
+5. **ComputerPool** (PLAN-002 §7) queda como track de exploración post-MVP, supeditado a
+   resolver el contrato de privacidad que ADR-0003 §Alternativas dejó explícito.
 
 ## Cómo abrir un ADR nuevo
 

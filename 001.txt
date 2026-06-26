@@ -337,11 +337,15 @@ Cada fase es desplegable sola y de-riskea la siguiente (estilo ADR-0004/0005).
   ADR-0004 (gate IN-path vs learning loop POST-path; el gate puede consumir el
   ranking del re-ranker pero no escribe) y con ADR-0001 (faultClass: se usa la
   ontología in-memory, se difiere la tabla `causal_hypothesis`).
-- **ADR-0007 — "Captura de freeze frame y readiness (mode 02 / 01-PID-01 / 06)"**
-  (Fase 6). Decisión de hardware/protocolo separada porque arrastra riesgo de
-  compatibilidad ELM327 y latencia de lectura; habilita G7-G8 y, de paso, completa
-  los campos `freezeFrame.*` que el `caseSignature` del ADR-0004 ya asume pero que
-  hoy no se capturan.
+- **ADR-0008 — "Captura de freeze frame y readiness (mode 01-PID-01 / mode 02;
+  mode 06 fuera)"** (Fase 6). NOTA: este plan reservaba el número 0007 para esta
+  decisión, pero 0007 terminó usándose para firma/rotación de claves; el ADR de
+  hardware es **0008** ([docs/ADR/0008-readiness-freezeframe-capture.md]). Decisión de
+  hardware/protocolo separada porque arrastra riesgo de compatibilidad ELM327 y latencia
+  de lectura; habilita G7-G8. Resuelve los campos `freezeFrame.*` que el `caseSignature`
+  del ADR-0004 ya asume mediante degradación con gracia en `bucket()`, no recolectándolos
+  a las apuradas. Prioridad: readiness primero (anti-fraude, autos reseteados), freeze
+  frame después; mode 06 fuera. Reordenado y detallado en PLAN-002 (M6/M7).
 
 ================================================================================
 ## 5. EXPLÍCITAMENTE FUERA DE ALCANCE
