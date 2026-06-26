@@ -30,8 +30,8 @@ consume número de ADR.
 | ADR | Título | Estado | Archivo |
 |-----|--------|--------|---------|
 | 0001 | Hipótesis causales reificadas (`CausalHypothesis`) | Aceptado | [0001-causal-hypothesis-reificada.md](0001-causal-hypothesis-reificada.md) |
-| 0002 | — | Sin asignar | — |
-| 0003 | — | Sin asignar | — |
+| 0002 | Currículo del senior — destilación a CARpsy y RAG central | Propuesto | [0002-curaduria-senior-rag-central.md](0002-curaduria-senior-rag-central.md) |
+| 0003 | Seed peer — bootstrap del conocimiento social P2P | Propuesto | [0003-seed-peer-social-p2p.md](0003-seed-peer-social-p2p.md) |
 | 0004 | Learning loop sobre SHIMI (Beta-Binomial conjugado) | Propuesto | [0004-learning-loop-shimi.md](0004-learning-loop-shimi.md) |
 | 0005 | Memoria episódica por vehículo | Propuesto | [0005-memoria-episodica-vehiculo.md](0005-memoria-episodica-vehiculo.md) |
 | 0006 | Núcleo diagnóstico determinístico con dependencias inyectadas | Borrador | — (propuesto, sin redactar) |
@@ -52,24 +52,30 @@ trabajo, no decoración:
   deja explícito que *reificado ≠ persistido* (la tabla `causal_hypothesis` es
   trabajo de ADR-0004).
 - ✅ **Formato `.md` + slug** adoptado: 0004 y 0005 renombrados desde `.txt`.
-- **0002 y 0003 nunca se asignaron.** El salto 0001→0004 sigue siendo un hueco;
-  reservados aquí explícitamente hasta que se les asigne una decisión.
+- ✅ **0002 y 0003 asignados y redactados.** Cierran el salto 0001→0004: 0002
+  (currículo del senior + RAG central) y 0003 (seed peer social P2P).
 - **ADR-0006 (núcleo determinístico inyectable)** está en borrador; al redactarlo,
   explicitar que es prerequisito estructural de PLAN-001 (gate determinístico) y el
   que consolida el `faultClassFor()` que ADR-0001 dejó como deuda.
 
 ## Coherencia entre ADRs (lectura cruzada)
 
-Estado de consistencia tras leer 0001 ⋈ 0004 ⋈ 0005 ⋈ PLAN-001:
+Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ PLAN-001:
 
 - ✅ **Principios alineados.** Offline-first, determinismo de la ruta de decisión,
-  clock inyectado y aprendizaje/efectos siempre *post-hoc* son consistentes en los
-  cuatro documentos.
+  clock inyectado y aprendizaje/efectos siempre *post-hoc* son consistentes en todos
+  los documentos.
 - ✅ **`caseSignature` compartida.** ADR-0005 reusa deliberadamente la firma de
   ADR-0004 ([0005 §Relación](0005-memoria-episodica-vehiculo.md)); procedural y
   episódica cuelgan de la misma clave. Coherente.
-- ✅ **Cadena de dependencias clara.** 0001 (modelo reificado) → 0004 (persiste +
-  aprende) → 0005 (indexa por vehículo); PLAN-001/0006 consumen el `faultClass`.
+- ✅ **Columna vertebral del conocimiento.** 0001 (modelo reificado) → 0002 (senior
+  cura + destila, central/build-time) → 0003 (seed peer distribuye y arranca lo
+  social) → 0004/0005 (aprendizaje local procedural + episódico). Loop cerrado:
+  social sube, curado baja.
+- ✅ **0002 no contradice 0004.** El retrain de 0002 es **central/batch**; el
+  invariante "sin fine-tuning on-device" de ADR-0004 §Alternativas se preserva. El
+  fine-tuning local estilo Biomed-AI quedó explícitamente descartado en 0002.
+- ✅ **Cadena de dependencias clara.** PLAN-001/0006 consumen el `faultClass`.
 - ⚠️ **Drift de esquema `sessions` ↔ `diagnostic_session`.** ADR-0004 introduce una
   tabla `diagnostic_session` distinta de la `sessions` actual; ADR-0005 ya lo marca
   en su *Nota de reconciliación* y lo asigna a la Fase 0 de ADR-0004. **Ninguna de
@@ -86,7 +92,8 @@ Estado de consistencia tras leer 0001 ⋈ 0004 ⋈ 0005 ⋈ PLAN-001:
    prerequisito; ahí se materializa `faultClassFor()`.
 3. **Decidir la reconciliación `sessions` ↔ `diagnostic_session`** (Fase 0 de
    ADR-0004) antes de materializar cualquier tabla nueva.
-4. **Asignar o reservar formalmente 0002/0003**, o renumerar para cerrar el salto.
+4. **Evaluar si la firma/rotación de clave del seed (ADR-0003 §Riesgos)** amerita un
+   ADR-0007 de key-management propio.
 
 ## Cómo abrir un ADR nuevo
 
