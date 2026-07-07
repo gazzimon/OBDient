@@ -18,6 +18,7 @@ function tabIcon(name: IconName) {
 export default function TabsLayout() {
   return (
     <Tabs
+      initialRouteName="diagnostics"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: MINT,
@@ -34,17 +35,18 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: BG },
       }}
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{ title: 'Dashboard', tabBarIcon: tabIcon('gauge') }}
-      />
+      {/* Conversation-first order (ADR-0009): the case is the product */}
       <Tabs.Screen
         name="diagnostics"
-        options={{ title: 'Diagnostics', tabBarIcon: tabIcon('car-wrench') }}
+        options={{ title: 'Diagnosis', tabBarIcon: tabIcon('car-wrench') }}
       />
       <Tabs.Screen
         name="reports"
         options={{ title: 'Reports', tabBarIcon: tabIcon('file-document-outline') }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{ title: 'Dashboard', tabBarIcon: tabIcon('gauge') }}
       />
       <Tabs.Screen
         name="settings"

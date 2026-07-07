@@ -90,7 +90,7 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
   const setConnecting    = useOBDStore((s) => s.setConnecting);
   const setConnected     = useOBDStore((s) => s.setConnected);
   const setDisconnected  = useOBDStore((s) => s.setDisconnected);
-  const startSession     = useSessionStore((s) => s.startSession);
+  const adoptVehicle     = useSessionStore((s) => s.adoptVehicle);
   const endSession       = useSessionStore((s) => s.endSession);
   const setLastDevice    = useSettingsStore((s) => s.setLastDeviceAddress);
 
@@ -156,14 +156,16 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
         });
         setConnected(vehicle);
         setLastDevice(device.address);
-        startSession(vehicle.id);
+        // Adopt (not replace): an always-open chat may already hold an intake
+        // conversation started before the adapter was connected (ADR-0009).
+        adoptVehicle(vehicle.id);
         startAutoSave();
       } catch (err) {
         setDisconnected();
         setConnectError(err instanceof Error ? err.message : 'Connection failed');
       }
     },
-    [setConnecting, setConnected, setDisconnected, setLastDevice, startSession, startAutoSave],
+    [setConnecting, setConnected, setDisconnected, setLastDevice, adoptVehicle, startAutoSave],
   );
 
   const disconnect = useCallback(() => {

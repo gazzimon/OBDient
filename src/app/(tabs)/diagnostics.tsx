@@ -1,7 +1,10 @@
-// Diagnostics: vehicle-anchored diagnostic sessions with multi-turn QVAC chat.
-// Flow: connect vehicle → enter mileage (optional) → Start Diagnosis
-//       → DTCs read automatically → QVAC opens with initial assessment
-//       → technician chats freely → close session
+// Diagnosis: the always-open conversation home (ADR-0009).
+// The chat renders unconditionally — no connection, no session required.
+// Flow: user describes the problem → local intake collects the case
+//       (identity, symptoms; OBD data once the adapter is connected)
+//       → deterministic brief → senior (Claude) conducts to the end.
+// "Read DTCs" is an in-chat action available while connected; closing the
+// conversation persists it to SQLite so it shows up under Reports.
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
@@ -19,16 +22,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
+import { container } from '@/data/container';
 import { useDiagnosticsVM } from '@/presentation/viewmodels/useDiagnosticsVM';
 import { useChatVM } from '@/presentation/viewmodels/useChatVM';
-import { VehicleHeaderCard } from '@/presentation/components/diagnostics/VehicleHeaderCard';
 import { ChatBubble } from '@/presentation/components/diagnostics/ChatBubble';
-import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCodeCard';
-import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
-import { PillButton } from '@/presentation/components/layout/PillButton';
 import { createChatMessage } from '@/domain/entities/chat-message';
 
 const MINT = '#2DE1A5';
+const MUTED = '#9A9A9A';
 
 export default function DiagnosticsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
@@ -37,22 +38,22 @@ export default function DiagnosticsScreen() {
 
   const activeSession     = useSessionStore((s) => s.activeSession);
   const startSession      = useSessionStore((s) => s.startSession);
+  const endSession        = useSessionStore((s) => s.endSession);
   const resetSession      = useSessionStore((s) => s.resetSession);
-  const pendingMileage    = useSessionStore((s) => s.pendingMileage);
-  const setPendingMileage = useSessionStore((s) => s.setPendingMileage);
+  const setSessionMileage = useSessionStore((s) => s.setSessionMileage);
   const addChatMessage    = useSessionStore((s) => s.addChatMessage);
 
-  const { codes, loadState, errorMessage, readCodes, clearCodes } = useDiagnosticsVM();
+  const { codes, loadState, errorMessage, readCodes } = useDiagnosticsVM();
   const { messages, isResponding, chatError, feedback, sendMessage, sendInitialAssessment, rateMessage } = useChatVM();
 
-  const [mileageText, setMileageText]   = useState('');
-  const [inputText, setInputText]       = useState('');
-  const [sessionStarting, setSessionStarting] = useState(false);
+  const [mileageText, setMileageText] = useState('');
+  const [inputText, setInputText]     = useState('');
+  const [readingDtcs, setReadingDtcs] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef  = useRef<TextInput>(null);
 
-  const sessionActive = activeSession !== null;
+  const hasConversation = messages.length > 0;
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -61,38 +62,38 @@ export default function DiagnosticsScreen() {
     }
   }, [messages.length]);
 
-  const handleStartDiagnosis = useCallback(async () => {
-    if (!vehicle || !isConnected) return;
-    setSessionStarting(true);
+  const ensureSession = useCallback(() => {
+    if (useSessionStore.getState().activeSession == null) {
+      startSession(vehicle?.id ?? 'unconnected');
+    }
+  }, [startSession, vehicle?.id]);
 
-    // Parse mileage
-    const km = mileageText.trim() !== '' ? parseInt(mileageText, 10) : null;
-    if (km !== null) setPendingMileage(km);
+  // In-chat action: read DTCs and trigger the initial assessment (intake or
+  // immediate senior handoff when the case is already complete).
+  const handleReadDtcs = useCallback(async () => {
+    if (!isConnected || readingDtcs || isResponding) return;
+    setReadingDtcs(true);
+    ensureSession();
 
-    // Start session
-    startSession(vehicle.id);
-
-    // Read DTCs
     const result = await readCodes();
+    const dtcCount = result?.codes?.length ?? 0;
 
-    // Inject a system context message visible in the chat
-    const dtcCount = result?.codes?.length ?? codes.length;
+    // Visible case summary — deliberately NO VIN (ADR-0009 data contract
+    // coherence; the identity line is enough for the owner).
     const summaryLines: string[] = [];
-    summaryLines.push(`Vehicle: ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ''}`);
-    if (vehicle.vin) summaryLines.push(`VIN: ${vehicle.vin}`);
-    if (km != null) summaryLines.push(`Odometer: ${km.toLocaleString()} km`);
+    if (vehicle) {
+      summaryLines.push(`Vehicle: ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ''}`);
+    }
     summaryLines.push(
-      dtcCount > 0
-        ? `DTCs found: ${dtcCount} code(s)`
-        : 'No active DTCs found.',
+      dtcCount > 0 ? `DTCs found: ${dtcCount} code(s)` : 'No active DTCs found.',
     );
     addChatMessage(createChatMessage('assistant', summaryLines.join('\n')));
 
-    // Ask QVAC for initial assessment
-    await sendInitialAssessment('Please give me your initial diagnostic assessment based on the vehicle data and DTCs provided.');
-
-    setSessionStarting(false);
-  }, [vehicle, isConnected, mileageText, codes.length, startSession, readCodes, setPendingMileage, addChatMessage, sendInitialAssessment]);
+    await sendInitialAssessment(
+      'Please give me your initial diagnostic assessment based on the vehicle data and DTCs provided.',
+    );
+    setReadingDtcs(false);
+  }, [isConnected, readingDtcs, isResponding, ensureSession, readCodes, vehicle, addChatMessage, sendInitialAssessment]);
 
   const handleSend = useCallback(() => {
     const text = inputText.trim();
@@ -105,78 +106,46 @@ export default function DiagnosticsScreen() {
     setMileageText(val.replace(/[^0-9]/g, ''));
   }, []);
 
+  const handleMileageCommit = useCallback(() => {
+    const km = mileageText.trim() !== '' ? parseInt(mileageText, 10) : null;
+    setSessionMileage(km);
+  }, [mileageText, setSessionMileage]);
+
+  // Closing persists the conversation (→ Reports) before resetting state.
   const confirmCloseSession = () => {
     Alert.alert(
-      'Close session',
-      'The current diagnostic session will be closed. You can start a new one at any time.',
+      'Close conversation',
+      'The conversation will be saved to Reports and a new one can start any time.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Close',
           style: 'destructive',
           onPress: () => {
-            resetSession();
-            setMileageText('');
-            setInputText('');
+            void (async () => {
+              endSession('completed');
+              const closed = useSessionStore.getState().activeSession;
+              if (closed) {
+                try {
+                  await container.saveDiagnosticReport.execute({
+                    session: closed,
+                    finalParameters: useOBDStore.getState().parameters,
+                  });
+                } catch (err) {
+                  console.warn('[Diagnosis] failed to persist session on close:', err);
+                }
+                container.diagnosticSession.reset(closed.id);
+              }
+              resetSession();
+              setMileageText('');
+              setInputText('');
+            })();
           },
         },
       ],
     );
   };
 
-  // ── Not connected ────────────────────────────────────────────────────────
-  if (!isConnected) {
-    return (
-      <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
-        <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 24, paddingTop: 12 }}>
-          <SectionHeader title="Diagnostics" />
-          <View className="bg-brand-surface rounded-2xl p-6 items-center mt-4">
-            <MaterialCommunityIcons name="car-off" size={40} color="#9A9A9A" />
-            <Text className="text-brand-muted font-mono text-sm text-center mt-3 leading-5">
-              Connect to a vehicle in Settings to start a diagnostic session.
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Connected, no active session ─────────────────────────────────────────
-  if (!sessionActive) {
-    return (
-      <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
-        <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 24, paddingTop: 12 }}>
-          <SectionHeader title="Diagnostics" />
-
-          {vehicle && (
-            <VehicleHeaderCard
-              vehicle={vehicle}
-              mileage={mileageText}
-              onMileageChange={handleMileageChange}
-              sessionActive={false}
-            />
-          )}
-
-          {errorMessage != null && (
-            <Text className="text-brand-red font-mono text-xs mb-3">{errorMessage}</Text>
-          )}
-
-          <PillButton
-            label={sessionStarting ? 'Starting…' : 'Start Diagnosis'}
-            onPress={() => void handleStartDiagnosis()}
-            loading={sessionStarting}
-            disabled={sessionStarting}
-          />
-
-          <Text className="text-brand-muted font-mono text-xs text-center mt-3">
-            Reads DTCs from the ECU and opens a QVAC session
-          </Text>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Active session — chat UI ──────────────────────────────────────────────
   return (
     <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
       <KeyboardAvoidingView
@@ -187,50 +156,106 @@ export default function DiagnosticsScreen() {
         {/* Header */}
         <View className="px-4 pt-3 pb-2 flex-row items-center justify-between">
           <View className="flex-1">
-            {vehicle && (
-              <Text className="text-brand-text font-mono-bold text-base">
-                {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')}
-              </Text>
-            )}
+            <Text className="text-brand-text font-mono-bold text-base">
+              {vehicle
+                ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')
+                : 'Diagnosis'}
+            </Text>
             {vehicle?.vin && (
               <Text className="text-brand-teal font-mono text-xs tracking-widest mt-0.5">
                 {vehicle.vin}
               </Text>
             )}
           </View>
-          <Pressable onPress={confirmCloseSession} className="ml-3 p-2 active:opacity-60">
-            <MaterialCommunityIcons name="close-circle-outline" size={22} color="#9A9A9A" />
-          </Pressable>
+          {hasConversation && (
+            <Pressable onPress={confirmCloseSession} className="ml-3 p-2 active:opacity-60">
+              <MaterialCommunityIcons name="close-circle-outline" size={22} color={MUTED} />
+            </Pressable>
+          )}
         </View>
 
-        <View className="h-px bg-brand-teal opacity-40 mx-4" />
-
-        {/* DTC chips */}
-        {codes.length > 0 && (
-          <View className="px-4 pt-3 pb-1 flex-row flex-wrap gap-2">
-            {codes.map((code) => (
-              <View key={code.id} className="border border-brand-teal rounded-md px-2 py-0.5">
-                <Text className="text-brand-teal font-mono text-xs">{code.code}</Text>
-              </View>
-            ))}
+        {/* Connection banner — informative, never blocking */}
+        {!isConnected && (
+          <View className="mx-4 mb-2 flex-row items-center gap-2 bg-brand-surface border border-brand-border rounded-xl px-3 py-2">
+            <MaterialCommunityIcons name="bluetooth-off" size={14} color={MUTED} />
+            <Text className="text-brand-muted font-mono text-xs flex-1">
+              Adapter not connected — live data unavailable. Connect in Settings.
+            </Text>
           </View>
         )}
 
-        {codes.length === 0 && loadState === 'done' && (
-          <View className="px-4 pt-3 pb-1 flex-row items-center gap-2">
-            <MaterialCommunityIcons name="check-circle-outline" size={14} color={MINT} />
-            <Text className="text-brand-teal font-mono text-xs">No active DTCs</Text>
-          </View>
+        <View className="h-px bg-brand-teal opacity-40 mx-4" />
+
+        {/* DTC chips + in-chat actions */}
+        <View className="px-4 pt-3 pb-1 flex-row flex-wrap items-center gap-2">
+          {codes.map((code) => (
+            <View key={code.id} className="border border-brand-teal rounded-md px-2 py-0.5">
+              <Text className="text-brand-teal font-mono text-xs">{code.code}</Text>
+            </View>
+          ))}
+
+          {codes.length === 0 && loadState === 'done' && (
+            <View className="flex-row items-center gap-1">
+              <MaterialCommunityIcons name="check-circle-outline" size={14} color={MINT} />
+              <Text className="text-brand-teal font-mono text-xs">No active DTCs</Text>
+            </View>
+          )}
+
+          {isConnected && (
+            <Pressable
+              onPress={() => void handleReadDtcs()}
+              disabled={readingDtcs || isResponding}
+              className={`border border-brand-pill rounded-md px-2 py-0.5 active:opacity-60 ${
+                readingDtcs || isResponding ? 'opacity-30' : ''
+              }`}
+            >
+              <Text className="font-mono text-xs" style={{ color: MINT }}>
+                {readingDtcs ? 'Reading…' : codes.length > 0 ? 'Re-read DTCs' : 'Read DTCs'}
+              </Text>
+            </Pressable>
+          )}
+
+          {isConnected && (
+            <View className="flex-row items-center gap-1 ml-auto">
+              <Text className="text-brand-muted font-mono text-xs">km</Text>
+              <TextInput
+                value={mileageText}
+                onChangeText={handleMileageChange}
+                onEndEditing={handleMileageCommit}
+                placeholder="odometer"
+                placeholderTextColor={MUTED}
+                keyboardType="number-pad"
+                maxLength={7}
+                className="bg-brand-surface rounded-md px-2 py-0.5 text-brand-text font-mono text-xs"
+                style={{ minWidth: 76 }}
+              />
+            </View>
+          )}
+        </View>
+
+        {errorMessage != null && (
+          <Text className="text-brand-red font-mono text-xs px-4 pt-1">{errorMessage}</Text>
         )}
 
         {/* Chat messages */}
         <ScrollView
           ref={scrollRef}
           className="flex-1 px-4"
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+          contentContainerStyle={{ paddingTop: 12, paddingBottom: 8, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
         >
+          {!hasConversation && (
+            <View className="flex-1 items-center justify-center px-6">
+              <MaterialCommunityIcons name="car-wrench" size={36} color={MUTED} />
+              <Text className="text-brand-muted font-mono text-sm text-center mt-4 leading-5">
+                Tell me what's going on with your vehicle.{'\n'}
+                I'll collect the case — vehicle, symptoms, OBD data — and bring in
+                the senior diagnostician.
+              </Text>
+            </View>
+          )}
+
           {messages.map((msg) => (
             <ChatBubble
               key={msg.id}
@@ -254,14 +279,14 @@ export default function DiagnosticsScreen() {
           )}
         </ScrollView>
 
-        {/* Input bar */}
+        {/* Input bar — always enabled */}
         <View className="px-4 pb-4 pt-2 flex-row items-end gap-3 border-t border-brand-border">
           <TextInput
             ref={inputRef}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Describe symptoms or ask QVAC…"
-            placeholderTextColor="#9A9A9A"
+            placeholder="Describe symptoms or ask anything…"
+            placeholderTextColor={MUTED}
             multiline
             maxLength={500}
             className="flex-1 bg-brand-surface rounded-2xl px-4 py-3 text-brand-text font-mono text-sm leading-5"

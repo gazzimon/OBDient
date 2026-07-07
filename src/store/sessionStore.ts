@@ -21,6 +21,10 @@ interface SessionState {
   pendingMileage: number | null;
 
   startSession: (vehicleId: string) => void;
+  // Attaches a just-connected vehicle to the ongoing (ad-hoc) session instead
+  // of replacing it — the pre-connection chat/intake must survive the connect.
+  adoptVehicle: (vehicleId: string) => void;
+  setSessionMileage: (km: number | null) => void;
   endSession: (status: Extract<SessionStatus, 'completed' | 'interrupted'>) => void;
   addTroubleCode: (code: TroubleCode) => void;
   clearTroubleCodes: () => void;
@@ -45,6 +49,21 @@ export const useSessionStore = create<SessionState>()((set) => ({
       activeSession: createSession(vehicleId, state.pendingMileage),
       interpretationStatus: 'idle',
       interpretationError: null,
+    })),
+
+  adoptVehicle: (vehicleId) =>
+    set((state) => ({
+      activeSession: state.activeSession
+        ? { ...state.activeSession, vehicleId }
+        : createSession(vehicleId, state.pendingMileage),
+    })),
+
+  setSessionMileage: (km) =>
+    set((state) => ({
+      pendingMileage: km,
+      activeSession: state.activeSession
+        ? { ...state.activeSession, mileage: km }
+        : null,
     })),
 
   endSession: (status) =>

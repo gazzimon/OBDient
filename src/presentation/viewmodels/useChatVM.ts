@@ -29,14 +29,26 @@ export function useChatVM() {
   const parameters    = useOBDStore((s) => s.parameters);
   const activeSession = useSessionStore((s) => s.activeSession);
   const addChatMessage = useSessionStore((s) => s.addChatMessage);
+  const pendingMileage = useSessionStore((s) => s.pendingMileage);
 
   const messages = activeSession?.messages ?? [];
   const codes    = activeSession?.troubleCodes ?? [];
-  const mileage  = activeSession?.mileage ?? null;
+  const mileage  = activeSession?.mileage ?? pendingMileage;
+
+  // Always-open chat (ADR-0009): the first message creates an ad-hoc session,
+  // adopted later by the real vehicle id when the adapter connects.
+  const ensureSession = useCallback((): string => {
+    const store = useSessionStore.getState();
+    if (store.activeSession == null) {
+      store.startSession(vehicle?.id ?? 'unconnected');
+    }
+    return useSessionStore.getState().activeSession?.id ?? 'adhoc';
+  }, [vehicle?.id]);
 
   const sendMessage = useCallback(async (userText: string) => {
     if (isResponding) return;
     setChatError(null);
+    const sessionId = ensureSession();
 
     const userMsg = createChatMessage('user', userText.trim());
     addChatMessage(userMsg);
@@ -50,16 +62,13 @@ export function useChatVM() {
       ];
 
       // ADR-0009 session pipeline: intake → brief → senior handoff
-      const result = await container.diagnosticSession.execute(
-        activeSession?.id ?? 'adhoc',
-        {
-          vehicle,
-          mileage,
-          troubleCodes: codes,
-          parameters,
-          history,
-        },
-      );
+      const result = await container.diagnosticSession.execute(sessionId, {
+        vehicle,
+        mileage,
+        troubleCodes: codes,
+        parameters,
+        history,
+      });
 
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
@@ -73,24 +82,22 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage, activeSession?.id]);
+  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage, ensureSession]);
 
   // Auto-sends the initial QVAC assessment after DTCs are read
   const sendInitialAssessment = useCallback(async (prompt: string) => {
     if (isResponding) return;
     setChatError(null);
+    const sessionId = ensureSession();
     setIsResponding(true);
     try {
-      const result = await container.diagnosticSession.execute(
-        activeSession?.id ?? 'adhoc',
-        {
-          vehicle,
-          mileage,
-          troubleCodes: codes,
-          parameters,
-          history: [{ role: 'user', content: prompt }],
-        },
-      );
+      const result = await container.diagnosticSession.execute(sessionId, {
+        vehicle,
+        mileage,
+        troubleCodes: codes,
+        parameters,
+        history: [{ role: 'user', content: prompt }],
+      });
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
@@ -103,7 +110,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage, activeSession?.id]);
+  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage, ensureSession]);
 
   // Human feedback 👍/👎 — moves confidence of the knowledge the response used.
   // 👍 raises the SHIMI node (verified) and confirms any Claude-origin entries used.
