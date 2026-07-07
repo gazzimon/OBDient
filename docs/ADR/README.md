@@ -35,6 +35,7 @@ consume número de ADR.
 | 0004 | Learning loop sobre SHIMI (Beta-Binomial conjugado) | Propuesto | [0004-learning-loop-shimi.md](0004-learning-loop-shimi.md) |
 | 0005 | Memoria episódica por vehículo | Propuesto | [0005-memoria-episodica-vehiculo.md](0005-memoria-episodica-vehiculo.md) |
 | 0006 | Núcleo diagnóstico determinístico con dependencias inyectadas | Propuesto | [0006-nucleo-deterministico-inyectable.md](0006-nucleo-deterministico-inyectable.md) |
+| 0006-A | Evidencia sintomática reportada por el usuario (satélite de 0006) | Propuesto | [0006-A-sintomas-reportados-usuario.md](0006-A-sintomas-reportados-usuario.md) |
 | 0007 | Firma y rotación de claves de los artefactos distribuidos | Propuesto | [0007-firma-y-rotacion-de-claves.md](0007-firma-y-rotacion-de-claves.md) |
 | 0008 | Captura de readiness y freeze frame (Mode 01 PID 01 / Mode 02; Mode 06 fuera) | Propuesto | [0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md) |
 
@@ -64,7 +65,10 @@ trabajo, no decoración:
   toma la decisión de hardware (readiness Mode 01 PID 01 → freeze frame Mode 02; Mode 06 fuera) que
   PLAN-001 §4 había reservado para 0007 antes de que 0007 se usara para firma de claves. Es el ADR de
   los hitos M6/M7 de PLAN-002.
-- **Numeración al día:** 0001–0008 asignados y redactados; sin huecos.
+- **Numeración al día:** 0001–0008 asignados y redactados; sin huecos. **0006-A** es el
+  primer ADR *satélite*: extiende una decisión existente (0006) en vez de tomar una nueva
+  independiente, y por eso hereda su número con sufijo de letra en lugar de consumir 0009.
+  La regla de "un número, una vez" se mantiene; el sufijo señala dependencia estructural directa.
 
 ## Coherencia entre ADRs (lectura cruzada)
 
@@ -85,6 +89,11 @@ Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ 00
   fine-tuning local estilo Biomed-AI quedó explícitamente descartado en 0002.
 - ✅ **0006 consolida el `faultClass`.** El núcleo puro de ADR-0006 materializa el
   `faultClassFor()` que ADR-0001 dejó como deuda y que PLAN-001 consume en el gate.
+- ✅ **0006-A compone como likelihood, no rompe la frontera.** Los síntomas del usuario
+  entran al `DiagnosticContext` de 0006 y suman un término de likelihood en log-odds sobre
+  el prior jerárquico; el embedding/LLM solo normaliza el texto en el borde (con
+  confirmación), nunca decide. Habilita el diagnóstico sin DTC. Reusa nodos (0001),
+  Beta-Binomial (0004) y episódico (0005) sin subsistema nuevo.
 - ✅ **0007 cierra el riesgo de 0003.** La firma/rotación de claves concreta el
   "firmado" que 0002/0003 asumían y elimina la fragilidad de la clave hardcodeada.
 - ⚠️ **Drift de esquema `sessions` ↔ `diagnostic_session`.** ADR-0004 introduce una
