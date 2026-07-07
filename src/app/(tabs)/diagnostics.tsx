@@ -114,40 +114,39 @@ export default function DiagnosticsScreen() {
     setSessionMileage(km);
   }, [mileageText, setSessionMileage]);
 
-  // Closing persists the conversation (→ Reports) before resetting state.
-  const confirmCloseSession = () => {
+  // Archives the current conversation to Reports and clears the screen.
+  const archiveAndReset = useCallback(async () => {
+    endSession('completed');
+    const closed = useSessionStore.getState().activeSession;
+    if (closed) {
+      try {
+        await container.saveDiagnosticReport.execute({
+          session: closed,
+          finalParameters: useOBDStore.getState().parameters,
+        });
+      } catch (err) {
+        console.warn('[Diagnosis] failed to persist session on close:', err);
+      }
+      container.diagnosticSession.reset(closed.id);
+    }
+    resetSession();
+    setMileageText('');
+    setInputText('');
+  }, [endSession, resetSession]);
+
+  // "+" — start a new diagnosis. One-step confirm: nothing is lost (the
+  // conversation lands in Reports), but the senior thread cannot be resumed.
+  const confirmNewDiagnosis = useCallback(() => {
+    if (!hasConversation) return;
     Alert.alert(
-      'Close conversation',
-      'The conversation will be saved to Reports and a new one can start any time.',
+      'New diagnosis',
+      'The current conversation will be saved to Reports.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Close',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              endSession('completed');
-              const closed = useSessionStore.getState().activeSession;
-              if (closed) {
-                try {
-                  await container.saveDiagnosticReport.execute({
-                    session: closed,
-                    finalParameters: useOBDStore.getState().parameters,
-                  });
-                } catch (err) {
-                  console.warn('[Diagnosis] failed to persist session on close:', err);
-                }
-                container.diagnosticSession.reset(closed.id);
-              }
-              resetSession();
-              setMileageText('');
-              setInputText('');
-            })();
-          },
-        },
+        { text: 'Start new', onPress: () => void archiveAndReset() },
       ],
     );
-  };
+  }, [hasConversation, archiveAndReset]);
 
   return (
     <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
@@ -166,11 +165,6 @@ export default function DiagnosticsScreen() {
               </Text>
             )}
           </View>
-          {hasConversation && (
-            <Pressable onPress={confirmCloseSession} className="ml-3 p-2 active:opacity-60">
-              <MaterialCommunityIcons name="close-circle-outline" size={22} color={MUTED} />
-            </Pressable>
-          )}
         </View>
 
         {/* Connection banner — informative, never blocking */}
@@ -278,8 +272,17 @@ export default function DiagnosticsScreen() {
           )}
         </ScrollView>
 
-        {/* Input bar — always enabled */}
+        {/* Input bar — always enabled; "+" starts a new diagnosis */}
         <View className="px-4 pb-4 pt-2 flex-row items-end gap-3 border-t border-brand-border">
+          <Pressable
+            onPress={confirmNewDiagnosis}
+            disabled={!hasConversation || isResponding}
+            className={`w-11 h-11 rounded-full border border-brand-border bg-brand-surface items-center justify-center active:opacity-70 ${
+              !hasConversation || isResponding ? 'opacity-30' : ''
+            }`}
+          >
+            <MaterialCommunityIcons name="chat-plus-outline" size={18} color={MINT} />
+          </Pressable>
           <TextInput
             ref={inputRef}
             value={inputText}
