@@ -142,28 +142,83 @@ describe('intake phase', () => {
     expect(res.text).toContain('no OBD data yet');
   });
 
-  it('VIN-decoded vehicle + DTCs = immediate handoff on the first diagnostic message', async () => {
+  it('even with VIN + DTCs, the junior interviews for symptoms BEFORE the handoff', async () => {
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
 
+    // First message: hard G0 complete, but no symptoms yet → probe, not handoff
     const res = await uc.execute('s1', input('diagnose my codes', {
       vehicle: vehicle(),
       troubleCodes: [dtc('P0302')],
       parameters: { RPM: param('RPM', 850) },
     }));
-    expect(res.source).toBe('claude');
+    expect(senior.calls).toHaveLength(0);
+    expect(res.source).toBe('carpsy');
+    // The probe is hinted by the DTC's fault class (misfire → its symptoms)
+    expect(res.text).toContain('Rough / shaky idle');
+
+    // Symptom reply completes the interview → handoff with the symptom aboard
+    const res2 = await uc.execute('s1', input('tiembla en ralenti y titila el check', {
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302')],
+      parameters: { RPM: param('RPM', 850) },
+    }));
+    expect(res2.source).toBe('claude');
     expect(senior.calls).toHaveLength(1);
+    const briefPrompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(briefPrompt).toContain('Rough / shaky idle');
+    expect(briefPrompt).toContain('Check engine light FLASHING');
+  });
+
+  it('symptoms given upfront still get ONE refining question (onset/conditions)', async () => {
+    const senior = fakeSenior();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+
+    const res = await uc.execute('s1', input('mi auto tiembla en ralenti', {
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302')],
+    }));
+    expect(senior.calls).toHaveLength(0);
+    expect(res.text).toContain('since when');
+
+    const res2 = await uc.execute('s1', input('desde hace una semana, en frio', {
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302')],
+    }));
+    expect(res2.source).toBe('claude');
+  });
+
+  it('an owner who gives nothing after the question cap still gets the senior (hard G0 holds)', async () => {
+    const senior = fakeSenior();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+    const caseInput = () => input('anda raro pero no se explicar', {
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302')],
+    });
+
+    for (let i = 0; i < 4; i++) {
+      const res = await uc.execute('s1', caseInput());
+      expect(res.source).toBe('carpsy');
+    }
+    const res = await uc.execute('s1', caseInput());
+    expect(res.source).toBe('claude'); // a decent call beats none
   });
 
   it('the brief prompt sent to the senior never contains the VIN', async () => {
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
-
-    await uc.execute('s1', input('mi vin es 3G1SF21649S123456, revisa los codigos', {
+    const caseInput = (text: string) => input(text, {
       vehicle: vehicle(),
       troubleCodes: [dtc('P0302')],
-    }));
-    expect(senior.calls[0]?.[0]?.content).not.toContain('3G1SF21649S123456');
+    });
+
+    await uc.execute('s1', caseInput('mi vin es 3G1SF21649S123456, revisa los codigos'));
+    await uc.execute('s1', caseInput('tiembla en ralenti'));
+
+    expect(senior.calls).toHaveLength(1);
+    const briefPrompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(briefPrompt.length).toBeGreaterThan(0);
+    expect(briefPrompt).not.toContain('3G1SF21649S123456');
   });
 
   it('gives up interviewing after the question cap and lets the junior work', async () => {
@@ -196,10 +251,12 @@ describe('intake phase', () => {
 describe('senior phase', () => {
   async function toSeniorPhase(senior: ReturnType<typeof fakeSenior>, log = fakeLog()) {
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
-    await uc.execute('s1', input('diagnose', {
+    const caseInput = (text: string) => input(text, {
       vehicle: vehicle(),
       troubleCodes: [dtc('P0302')],
-    }));
+    });
+    await uc.execute('s1', caseInput('diagnose'));                    // → symptom probe
+    await uc.execute('s1', caseInput('tiembla en ralenti'));          // → handoff
     return uc;
   }
 
@@ -231,14 +288,14 @@ describe('senior phase', () => {
     expect(res2.source).toBe('claude');
   });
 
-  it('every turn lands in the case log (user, senior)', async () => {
+  it('every turn lands in the case log (user, junior interview, senior)', async () => {
     const senior = fakeSenior();
     const log = fakeLog();
     const uc = await toSeniorPhase(senior, log);
     await uc.execute('s1', input('gracias'));
 
     const roles = log.turns.map((t) => t.role);
-    expect(roles).toEqual(['user', 'senior', 'user', 'senior']);
+    expect(roles).toEqual(['user', 'junior', 'user', 'senior', 'user', 'senior']);
   });
 });
 

@@ -3,20 +3,21 @@
 // checklist already decided WHAT is missing. Any failure here degrades to the
 // use case's fixed templates, so this path may fail freely.
 
-import type { InterviewerPort } from '@/domain/usecases/diagnostic-intake-session';
-import type { MissingField } from '@/domain/entities/diagnostic-brief';
+import type { InterviewerPort, IntakeGap } from '@/domain/usecases/diagnostic-intake-session';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 
-const FIELD_HINTS: Readonly<Record<MissingField, string>> = {
+const FIELD_HINTS: Readonly<Record<IntakeGap, string>> = {
   make: 'vehicle make (brand)',
   model: 'vehicle model',
   year: 'model year',
   obd_evidence: 'OBD data — ask them to connect the adapter and read codes or live data',
+  symptoms: 'the symptoms the owner notices (noises, smells, smoke, behavior cold vs hot)',
+  details: 'when the problem started and under what conditions (cold start, warmed up, idle, accelerating), plus recent repairs',
 };
 
 export class QvacInterviewerAdapter implements InterviewerPort {
   async phraseQuestion(
-    missing: readonly MissingField[],
+    missing: readonly IntakeGap[],
     knownSummary: string,
   ): Promise<string> {
     const context =

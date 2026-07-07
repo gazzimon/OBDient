@@ -82,6 +82,18 @@ plantillas fijas — la checklist es la misma.
   reportados **enriquecen** el brief pero no sustituyen esta evidencia: la llamada
   senior es solo para casos con datos del estado del vehículo.
 
+**Suficiencia de entrevista (encima del G0 duro).** Cumplir G0 no dispara el handoff
+por sí solo — sin esto, un VIN decodificado + DTCs producían la llamada senior en el
+primer mensaje y el junior nunca entrevistaba. Antes de gastar la llamada, el junior
+además debe: (a) tener **al menos un síntoma** capturado — la pregunta se guía por los
+`faultClass` de los DTCs activos vía las aristas `manifestsAs` (ADR-0006-A: "los códigos
+sugieren X, ¿notás alguno de estos?") — y (b) haber hecho **al menos un intercambio de
+refinamiento** (desde cuándo, frío/caliente, condiciones) cuando el síntoma vino en el
+primer mensaje. Tope de insistencia: al agotar las preguntas (4), si el G0 duro se
+cumple se hace el handoff con lo que haya — una llamada decente vale más que ninguna;
+si no se cumple, degrada al junior. Sin senior configurado la entrevista se saltea por
+completo (no hay llamada que refinar).
+
 ### 2. El brief: ensamblado determinístico, redactado determinísticamente
 
 La salida de la admisión es un `DiagnosticBrief` tipado que un renderer puro convierte

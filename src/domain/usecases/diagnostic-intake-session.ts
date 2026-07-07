@@ -11,10 +11,19 @@
 import { classifyQuery } from './query-router';
 import type { ChatWithQVACInput } from './chat-with-qvac';
 import type { MultiAgentChatResult } from './multi-agent-chat';
+import type { TroubleCode } from '@/domain/entities/trouble-code';
 import { parseVehicleIdentity, ParsedVehicleIdentity } from '@/domain/services/vehicle-identity-parser';
 import { matchSymptoms } from '@/domain/services/symptom-matcher';
+import { faultClassClosure } from '@/domain/services/fault-class';
 import { buildBrief, briefReadiness, renderBriefPrompt } from '@/domain/services/brief-assembler';
+import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontology';
 import type { DiagnosticBrief, MissingField } from '@/domain/entities/diagnostic-brief';
+
+// What the intake may still need to ask about. Extends the hard G0 checklist
+// (MissingField) with the interview-sufficiency gaps: 'symptoms' (no symptom
+// captured yet) and 'details' (symptoms exist but no refining exchange
+// happened — onset, cold/hot, conditions).
+export type IntakeGap = MissingField | 'symptoms' | 'details';
 
 // ─── Ports (effects stay outside; fakes in tests) ───────────────────────────
 
@@ -28,7 +37,7 @@ export interface SeniorAgentPort {
 // Optional LLM phrasing of the next intake question. Any failure or slow reply
 // degrades to a fixed template — completeness never depends on the model.
 export interface InterviewerPort {
-  phraseQuestion(missing: readonly MissingField[], knownSummary: string): Promise<string>;
+  phraseQuestion(missing: readonly IntakeGap[], knownSummary: string): Promise<string>;
 }
 
 export type TurnRole = 'user' | 'junior' | 'senior';
@@ -103,7 +112,29 @@ function knownSummary(brief: DiagnosticBrief): string {
   return parts.join(' ');
 }
 
-function templateQuestion(missing: readonly MissingField[], known: string): string {
+// Symptoms worth probing for the active DTCs: manifestsAs edges over the
+// fault-class closure of each code (ADR-0006-A pre-filter), minus what the
+// owner already reported. Deterministic; empty when nothing maps.
+function candidateSymptomLabels(
+  dtcs: readonly TroubleCode[],
+  alreadyReported: readonly string[],
+): string[] {
+  const concepts = new Set<string>();
+  for (const dtc of dtcs) {
+    for (const node of faultClassClosure(dtc.code)) concepts.add(node.id);
+  }
+  return symptomsForConcepts([...concepts])
+    .filter((id) => !alreadyReported.includes(id))
+    .slice(0, 3)
+    .map((id) => SYMPTOM_MAP[id]?.label)
+    .filter((label): label is string => label != null);
+}
+
+function templateQuestion(
+  missing: readonly IntakeGap[],
+  known: string,
+  symptomHints: readonly string[],
+): string {
   if (missing.includes('make') || missing.includes('model') || missing.includes('year')) {
     const knownStr = known.length > 0 ? ` So far I have: ${known}.` : '';
     return (
@@ -111,11 +142,28 @@ function templateQuestion(missing: readonly MissingField[], known: string): stri
       `What is the make, model and year? (e.g. "Chevrolet Corsa 2008")`
     );
   }
-  // Only obd_evidence left
+  if (missing.includes('obd_evidence')) {
+    return (
+      'I have the vehicle identity, but no OBD data yet. Please connect the adapter ' +
+      'and read the trouble codes or live parameters from the Dashboard — the senior ' +
+      'diagnosis is only worth doing with real vehicle-state data.'
+    );
+  }
+  if (missing.includes('symptoms')) {
+    const hinted = symptomHints.length > 0
+      ? `Based on the codes, common signs would be: ${symptomHints.join('; ')}. Do you notice any of these — or `
+      : 'Do you notice ';
+    return (
+      `Before involving the senior diagnostician, tell me what YOU notice. ${hinted}` +
+      'anything else: noises, smells, smoke, how it behaves cold vs hot? ' +
+      'The more detail, the better the diagnosis.'
+    );
+  }
+  // 'details' — refine what was reported
   return (
-    'I have the vehicle identity, but no OBD data yet. Please connect the adapter ' +
-    'and read the trouble codes or live parameters from the Dashboard — the senior ' +
-    'diagnosis is only worth doing with real vehicle-state data.'
+    'Good — a couple more details to sharpen the case: since when does this happen, ' +
+    'and under what conditions (cold start, warmed up, idling, accelerating)? ' +
+    'Any recent repairs or part changes?'
   );
 }
 
@@ -158,6 +206,15 @@ export class DiagnosticIntakeSessionUseCase {
       // General chit-chat outside a diagnostic case: previous behavior, no state
       return this.juniorTurn(sessionId, input);
     }
+    // No senior configured → nothing to refine a brief for. Skip the interview
+    // entirely and let the local junior pipeline handle the case (previous
+    // behavior), instead of asking questions whose answers have no destination.
+    if (!this.senior.isConfigured()) {
+      state.phase = 'local_only';
+      this.cases.set(sessionId, state);
+      return this.juniorTurn(sessionId, input);
+    }
+
     this.cases.set(sessionId, state);
 
     // Absorb evidence from this message
@@ -179,18 +236,35 @@ export class DiagnosticIntakeSessionUseCase {
     });
     const readiness = briefReadiness(brief);
 
+    // Interview-sufficiency gate on top of the hard G0: even with identity and
+    // OBD data complete, the junior interviews before spending the senior call
+    // — no symptoms yet? probe them (hinted by the DTCs' fault classes);
+    // symptoms but zero refining exchanges? ask onset/conditions once.
+    const gaps: IntakeGap[] = [...readiness.missing];
     if (readiness.ready) {
+      if (state.symptomIds.length === 0) gaps.push('symptoms');
+      else if (state.questionsAsked === 0) gaps.push('details');
+    }
+
+    if (gaps.length === 0) {
       return this.handoff(sessionId, state, input, brief);
     }
 
     if (state.questionsAsked >= MAX_INTAKE_QUESTIONS) {
-      // Intake could not complete — stop interviewing, let the junior work
-      // with whatever exists (honest degradation, never a dead end).
+      // The owner won't give more. If the hard G0 holds, a decent call beats
+      // none — hand off with what exists; otherwise degrade to the junior.
+      if (readiness.ready) {
+        return this.handoff(sessionId, state, input, brief);
+      }
       state.phase = 'local_only';
       return this.juniorTurn(sessionId, input);
     }
 
-    const question = await this.nextQuestion(readiness.missing, knownSummary(brief));
+    const question = await this.nextQuestion(
+      gaps,
+      knownSummary(brief),
+      candidateSymptomLabels(input.troubleCodes, state.symptomIds),
+    );
     state.questionsAsked += 1;
     this.caseLog.logTurn(sessionId, 'junior', question.text);
     return localResult(question.text, question.fromLlm);
@@ -276,10 +350,11 @@ export class DiagnosticIntakeSessionUseCase {
   // LLM-phrased question with template fallback. The checklist already decided
   // WHAT is missing; the model only picks the words.
   private async nextQuestion(
-    missing: readonly MissingField[],
+    missing: readonly IntakeGap[],
     known: string,
+    symptomHints: readonly string[],
   ): Promise<{ text: string; fromLlm: boolean }> {
-    const template = templateQuestion(missing, known);
+    const template = templateQuestion(missing, known, symptomHints);
     if (this.interviewer == null) return { text: template, fromLlm: false };
 
     let timer: ReturnType<typeof setTimeout> | undefined;
