@@ -13,8 +13,6 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -25,6 +23,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { container } from '@/data/container';
 import { useDiagnosticsVM } from '@/presentation/viewmodels/useDiagnosticsVM';
 import { useChatVM } from '@/presentation/viewmodels/useChatVM';
+import { useKeyboardHeight } from '@/presentation/hooks/useKeyboardHeight';
 import { ChatBubble } from '@/presentation/components/diagnostics/ChatBubble';
 import { createChatMessage } from '@/domain/entities/chat-message';
 
@@ -53,14 +52,18 @@ export default function DiagnosticsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const inputRef  = useRef<TextInput>(null);
 
+  // Edge-to-edge keyboard handling: pad the layout by the reported keyboard
+  // height (KeyboardAvoidingView is a no-op on Android edge-to-edge).
+  const keyboardHeight = useKeyboardHeight();
+
   const hasConversation = messages.length > 0;
 
-  // Scroll to bottom whenever messages change
+  // Scroll to bottom whenever messages change or the keyboard opens
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [messages.length]);
+  }, [messages.length, keyboardHeight]);
 
   const ensureSession = useCallback(() => {
     if (useSessionStore.getState().activeSession == null) {
@@ -148,11 +151,7 @@ export default function DiagnosticsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
+      <View className="flex-1" style={{ paddingBottom: keyboardHeight }}>
         {/* Header */}
         <View className="px-4 pt-3 pb-2 flex-row items-center justify-between">
           <View className="flex-1">
@@ -304,7 +303,7 @@ export default function DiagnosticsScreen() {
             <MaterialCommunityIcons name="send" size={18} color="#0D0D0D" />
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

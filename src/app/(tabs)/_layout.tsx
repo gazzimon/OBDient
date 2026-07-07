@@ -21,6 +21,9 @@ export default function TabsLayout() {
       initialRouteName="diagnostics"
       screenOptions={{
         headerShown: false,
+        // Hide the bar while typing: frees the space AND makes the manual
+        // keyboard padding in the chat screen match the real keyboard top.
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: MINT,
         tabBarInactiveTintColor: MUTED,
         tabBarStyle: {
