@@ -99,9 +99,11 @@ export default function SettingsScreen() {
     setModelError(null);
     setModelLoading(true);
 
-    // Stage 1: chat LLM (required).
+    // Stage 1: chat LLM (required). Honors the custom model URL if set —
+    // previously this was silently ignored.
     try {
-      await qvacSDK.initialize((p) => setModelProgress(p));
+      const { customModelSrc } = useSettingsStore.getState();
+      await qvacSDK.initialize((p) => setModelProgress(p), customModelSrc);
     } catch (err) {
       console.error('[QVAC] LLM model load failed:', err);
       setModelError(`LLM load failed — ${describeLoadError(err)}`);

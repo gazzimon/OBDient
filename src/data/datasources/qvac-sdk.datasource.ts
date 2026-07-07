@@ -7,7 +7,8 @@
 //   3. Call dispose() when the app goes to background to free RAM (optional).
 //
 // The model is kept in memory between calls for fast response times.
-// CARpsy Q4_K_M (0.6B) needs roughly 400 MB of RAM — safe to keep loaded on mid-range phones.
+// Qwen3-1.7B Q4_K_M needs ~1.6 GB of RAM loaded; on low-RAM devices the
+// initialize() fallback drops to the SDK's Llama 3.2 1B (~0.9 GB).
 
 import {
   loadModel,
@@ -28,12 +29,17 @@ export interface QvacInterpretationResult {
   generatedAt: Date;
 }
 
-// CARpsy — OBDient's fine-tuned Qwen3-0.6B model, specialized for OBD-II diagnostics.
-// Hosted on Hugging Face; downloaded once and cached on device by the QVAC SDK.
-// Fallback: LLAMA_3_2_1B_INST_Q4_0 if the custom model fails to load.
-const CARPSY_MODEL_URL =
-  'https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF/resolve/main/CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf';
-const DEFAULT_MODEL = CARPSY_MODEL_URL;
+// Default: stock Qwen3-1.7B instruct, Q4_K_M (~1.11 GB download, ~1.6 GB RAM).
+// Replaces the CARpsy fine-tune (Qwen3-0.6B), which leaked training artifacts
+// into responses (see stripModelArtifacts). Under ADR-0009 the local model's
+// job is interviewing + offline fallback + RAG narration — a clean instruct
+// model beats a damaged specialist there. Same Qwen3 family: chat template and
+// <think> stripping carry over unchanged.
+const QWEN3_1_7B_URL =
+  'https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf';
+// Kept for A/B with scripts/eval-carpsy.js:
+// https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF/resolve/main/CARpsy-v2-qwen3-0.6b.Q4_K_M.gguf
+const DEFAULT_MODEL = QWEN3_1_7B_URL;
 
 // The QVAC/llama.cpp default ctx_size is only 1024 tokens — too small for a
 // diagnostic prompt (system prompt + 20 live sensors + retrieved knowledge +
@@ -94,27 +100,42 @@ export class QvacSDKDataSource {
     this.lastModelSrc = modelSrc;
 
     this.loadingPromise = (async () => {
-      const startedAt = Date.now();
-      try {
+      const load = async (src: string): Promise<void> => {
+        const startedAt = Date.now();
         this.modelId = await loadModel({
-          modelSrc,
+          modelSrc: src,
           modelType: 'llamacpp-completion',
           modelConfig: { ctx_size: MODEL_CTX_SIZE },
         });
+        this.lastModelSrc = src;
         this.loadProgress = 1;
         const loadMs = Date.now() - startedAt;
         // Artifact log: proves the model was loaded ON-DEVICE via the QVAC SDK.
         console.log(
-          `[QVAC] Model loaded on-device in ${loadMs}ms — src=${modelSrc} modelId=${this.modelId}`,
+          `[QVAC] Model loaded on-device in ${loadMs}ms — src=${src} modelId=${this.modelId}`,
         );
-        audit({ event: 'model_load', modelId: this.modelId, src: modelSrc, load_ms: loadMs });
+        audit({ event: 'model_load', modelId: this.modelId, src, load_ms: loadMs });
         onProgress?.(1);
-      } catch (err) {
-        this.loadingPromise = null;
-        throw new QvacUnavailableError(
-          'Failed to load QVAC model on device',
-          err,
+      };
+
+      try {
+        await load(modelSrc);
+      } catch (primaryErr) {
+        // Last-resort fallback: the SDK's own shipped model constant. Covers
+        // OOM on low-RAM devices and a broken/unreachable custom URL.
+        if (modelSrc === LLAMA_3_2_1B_INST_Q4_0.src) {
+          this.loadingPromise = null;
+          throw new QvacUnavailableError('Failed to load QVAC model on device', primaryErr);
+        }
+        console.warn(
+          `[QVAC] primary model failed (${String(primaryErr)}) — falling back to Llama 3.2 1B`,
         );
+        try {
+          await load(LLAMA_3_2_1B_INST_Q4_0.src);
+        } catch (fallbackErr) {
+          this.loadingPromise = null;
+          throw new QvacUnavailableError('Failed to load QVAC model on device', fallbackErr);
+        }
       }
     })();
 

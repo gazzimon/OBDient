@@ -17,6 +17,8 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { container } from '@/data/container';
 import { initializeDatabase } from '@/data/datasources/storage.datasource';
+import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
+import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 
 // RNBluetoothClassic types
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
@@ -115,6 +117,24 @@ export function BluetoothProvider({ children }: BluetoothProviderProps) {
     initializeDatabase().catch((err) =>
       console.error('[BluetoothProvider] DB init error:', err),
     );
+  }, []);
+
+  // Auto-load the on-device model at startup — no manual Settings step needed.
+  // Fire-and-forget: the chat works meanwhile (deterministic intake templates
+  // + senior path); Settings keeps its button as status/retry. First run
+  // downloads the GGUF once (~1.1 GB, ideally on Wi-Fi); after that it loads
+  // from the on-device cache.
+  useEffect(() => {
+    const { customModelSrc } = useSettingsStore.getState();
+    qvacSDK
+      .initialize(undefined, customModelSrc)
+      .then(() => qvacRag.initialize())
+      .catch((err) =>
+        console.warn(
+          '[BluetoothProvider] model auto-load failed (retry from Settings):',
+          err,
+        ),
+      );
   }, []);
 
   // Save session when the app goes to background (user switches apps, locks screen, etc.)
