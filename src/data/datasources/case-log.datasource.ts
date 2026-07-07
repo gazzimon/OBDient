@@ -4,7 +4,11 @@
 
 import type { CaseLogPort, TurnRole } from '@/domain/usecases/diagnostic-intake-session';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
-import { insertBrief, insertConversationTurn } from '@/data/datasources/storage.datasource';
+import {
+  insertBrief,
+  insertConversationTurn,
+  insertSymptomCandidate,
+} from '@/data/datasources/storage.datasource';
 
 export class CaseLogDataSource implements CaseLogPort {
   logTurn(sessionId: string, role: TurnRole, content: string): void {
@@ -14,6 +18,14 @@ export class CaseLogDataSource implements CaseLogPort {
       content,
       createdAt: new Date(),
     }).catch((err) => console.warn('[CaseLog] turn write failed:', err));
+  }
+
+  logSymptomCandidate(sessionId: string, description: string): void {
+    insertSymptomCandidate({
+      sessionId,
+      description,
+      createdAt: new Date(),
+    }).catch((err) => console.warn('[CaseLog] symptom candidate write failed:', err));
   }
 
   logBrief(sessionId: string, brief: DiagnosticBrief, prompt: string): void {

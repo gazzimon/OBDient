@@ -7,10 +7,12 @@
 // machine re-asks for whatever is missing.
 
 export interface ParsedVehicleIdentity {
-  readonly make: string | null;   // canonical name, e.g. "Chevrolet"
-  readonly model: string | null;  // as typed, capitalized, e.g. "Corsa"
+  readonly make: string | null;      // canonical name, e.g. "Chevrolet"
+  readonly model: string | null;     // as typed, capitalized, e.g. "Corsa"
   readonly year: number | null;
-  readonly engine: string | null; // displacement as typed, e.g. "1.6"
+  readonly engine: string | null;    // displacement as typed, e.g. "1.6"
+  readonly mileageKm: number | null; // "150000 km" / "150.000 km" / "150 mil"
+  readonly fuelType: string | null;  // canonical: petrol|diesel|cng|hybrid|electric
 }
 
 // Canonical make → accepted aliases (lowercase, unaccented).
@@ -68,11 +70,28 @@ const ALIAS_TO_MAKE: Readonly<Record<string, string>> = Object.fromEntries(
 const YEAR_4 = /^(19[89]\d|20[0-4]\d)$/;
 // Engine displacement: 1.0–9.9, comma or dot decimal ("1.6", "1,6", "2.0i" no)
 const ENGINE = /^(\d[.,]\d)$/;
+
+// Mileage on the normalized text (before tokenizing): "150000 km",
+// "150.000 kms", "150 mil km", "150 mil". Requires the km/mil marker so it
+// can never collide with a year or a numeric model name.
+const MILEAGE_FULL = /(\d{1,3}(?:[.,]\d{3})+|\d{4,7})\s*(?:km|kms|kilometros|kilometres|kilometers)\b/;
+const MILEAGE_MIL = /(\d{1,3})\s*mil\b(?:\s*(?:km|kms))?/;
+
+// Fuel/engine type — small closed lexicon, canonical english values
+const FUEL_ALIASES: Readonly<Record<string, string>> = {
+  nafta: 'petrol', naftero: 'petrol', gasolina: 'petrol', gasoline: 'petrol', petrol: 'petrol',
+  diesel: 'diesel', gasoil: 'diesel', gasoleo: 'diesel', tdi: 'diesel',
+  gnc: 'cng', cng: 'cng',
+  hibrido: 'hybrid', hybrid: 'hybrid',
+  electrico: 'electric', electric: 'electric', ev: 'electric',
+};
+
 // Noise words the user may include in the reply
 const STOPWORDS = new Set([
   'es', 'un', 'una', 'el', 'la', 'mi', 'del', 'de', 'ano', 'año', 'modelo',
   'marca', 'motor', 'tengo', 'auto', 'coche', 'carro', 'camioneta', 'vehiculo',
   'a', 'an', 'the', 'my', 'year', 'model', 'make', 'engine', 'car', 'truck', 'its', 'it',
+  'km', 'kms', 'kilometros', 'kilometres', 'kilometers', 'mil', 'con', 'tiene', 'anda',
 ]);
 
 function stripAccents(s: string): string {
@@ -85,8 +104,26 @@ function capitalize(s: string): string {
 }
 
 export function parseVehicleIdentity(text: string): ParsedVehicleIdentity {
-  const tokens = stripAccents(text.toLowerCase())
-    .replace(/(\d),(\d)/g, '$1.$2') // decimal comma ("1,6") before punctuation cleanup
+  const normalized = stripAccents(text.toLowerCase())
+    .replace(/(\d),(\d)/g, '$1.$2'); // decimal comma ("1,6") before anything else
+
+  // Mileage runs on the full text (its "km"/"mil" marker spans tokens), and
+  // the matched span is blanked out so its digits can't leak into the model.
+  let mileageKm: number | null = null;
+  let scrubbed = normalized;
+  const full = MILEAGE_FULL.exec(normalized);
+  if (full?.[1] != null) {
+    mileageKm = parseInt(full[1].replace(/[.,]/g, ''), 10);
+    scrubbed = normalized.replace(full[0], ' ');
+  } else {
+    const mil = MILEAGE_MIL.exec(normalized);
+    if (mil?.[1] != null) {
+      mileageKm = parseInt(mil[1], 10) * 1000;
+      scrubbed = normalized.replace(mil[0], ' ');
+    }
+  }
+
+  const tokens = scrubbed
     .replace(/[,;:!?()"]/g, ' ')
     .split(/\s+/)
     .filter(Boolean);
@@ -94,6 +131,7 @@ export function parseVehicleIdentity(text: string): ParsedVehicleIdentity {
   let make: string | null = null;
   let year: number | null = null;
   let engine: string | null = null;
+  let fuelType: string | null = null;
   const modelTokens: string[] = [];
   let makeIndex = -1;
 
@@ -112,8 +150,15 @@ export function parseVehicleIdentity(text: string): ParsedVehicleIdentity {
       engine = engineMatch[1].replace(',', '.');
       return;
     }
+    if (fuelType == null && FUEL_ALIASES[token] != null) {
+      fuelType = FUEL_ALIASES[token] ?? null;
+      return;
+    }
     if (STOPWORDS.has(token)) return;
     // Candidate model token: alphanumeric word that is none of the above.
+    // Pure digit runs of 4+ are never a model name (years/mileage leftovers);
+    // short numerics like "206" are legitimate models.
+    if (/^\d{4,}$/.test(token)) return;
     // Only tokens AFTER the make count when a make was found ("corsa chevrolet"
     // still works because make may appear later — see second pass below).
     if (/^[a-z0-9][a-z0-9-]*$/.test(token)) {
@@ -140,5 +185,5 @@ export function parseVehicleIdentity(text: string): ParsedVehicleIdentity {
     ? pool.slice(0, 2).map((t) => capitalize(t.word)).join(' ')
     : null;
 
-  return { make, model, year, engine };
+  return { make, model, year, engine, mileageKm, fuelType };
 }

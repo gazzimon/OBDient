@@ -31,6 +31,10 @@ export interface BriefInput {
   readonly troubleCodes: readonly TroubleCode[];
   readonly parameters: ObdParameterSnapshot;
   readonly symptomIds: readonly string[];
+  // Owner descriptions with substance that matched no taxonomy entry (raw;
+  // redacted here). Provenance: user (ADR-0009 "catalog, never discard").
+  readonly describedSymptoms: readonly string[];
+  readonly deniedSymptomIds: readonly string[];
   readonly userNotes: string | null; // raw; redacted here before it enters the brief
   readonly now: number;              // epoch ms, injected (ClockPort discipline)
 }
@@ -49,12 +53,13 @@ function resolveIdentity(
   const model = vinModel ?? user?.model ?? null;
   const year = vinYear ?? user?.year ?? null;
   const engine = user?.engine ?? null; // VIN path does not decode displacement today
+  const fuelType = user?.fuelType ?? null;
 
   let source: IdentitySource = 'unknown';
   if (vinMake != null) source = 'vin';
   else if (make != null || model != null || year != null) source = 'user';
 
-  return { make, model, year, engine, source };
+  return { make, model, year, engine, fuelType, source };
 }
 
 export function buildBrief(input: BriefInput): DiagnosticBrief {
@@ -83,18 +88,21 @@ export function buildBrief(input: BriefInput): DiagnosticBrief {
     }];
   });
 
-  const symptoms: BriefSymptom[] = input.symptomIds.flatMap((id): BriefSymptom[] => {
-    const node = SYMPTOM_MAP[id];
-    return node != null ? [{ id, label: node.label }] : [];
-  });
+  const toSymptoms = (ids: readonly string[]): BriefSymptom[] =>
+    ids.flatMap((id): BriefSymptom[] => {
+      const node = SYMPTOM_MAP[id];
+      return node != null ? [{ id, label: node.label }] : [];
+    });
 
   return {
     identity: resolveIdentity(input.vehicle, input.userIdentity),
-    mileageKm: input.mileageKm,
+    mileageKm: input.mileageKm ?? input.userIdentity?.mileageKm ?? null,
     dtcs,
     vehicleState: classifyVehicleState(input.parameters, input.troubleCodes),
     liveReadings,
-    symptoms,
+    symptoms: toSymptoms(input.symptomIds),
+    describedSymptoms: input.describedSymptoms.map((s) => redactText(s)),
+    deniedSymptoms: toSymptoms(input.deniedSymptomIds),
     userNotes: input.userNotes != null ? redactText(input.userNotes) : null,
     createdAt: input.now,
   };
@@ -136,9 +144,10 @@ export function renderBriefPrompt(brief: DiagnosticBrief): string {
     '## Vehicle',
   );
 
-  const { make, model, year, engine, source } = brief.identity;
+  const { make, model, year, engine, fuelType, source } = brief.identity;
   const idParts = [make ?? 'unknown make', model ?? 'unknown model', year != null ? String(year) : 'unknown year'];
-  const engineStr = engine != null ? `, engine ${engine}` : '';
+  const engineBits = [engine != null ? `engine ${engine}` : null, fuelType].filter(Boolean).join(' ');
+  const engineStr = engineBits.length > 0 ? `, ${engineBits}` : '';
   lines.push(`- ${idParts.join(' ')}${engineStr} (identity source: ${source})`);
   if (brief.mileageKm != null) lines.push(`- Odometer: ${brief.mileageKm} km`);
 
@@ -175,11 +184,29 @@ export function renderBriefPrompt(brief: DiagnosticBrief): string {
   if (brief.symptoms.length > 0) {
     for (const s of brief.symptoms) lines.push(`- ${s.label}`);
   } else {
-    lines.push('- None reported.');
+    lines.push('- None matched the symptom catalog.');
+  }
+  if (brief.describedSymptoms.length > 0) {
+    lines.push('- Owner-described (not in catalog, verbatim):');
+    for (const d of brief.describedSymptoms) lines.push(`  - "${d}"`);
+  }
+  if (brief.deniedSymptoms.length > 0) {
+    lines.push('- Explicitly DENIED by the owner (negative evidence):');
+    for (const s of brief.deniedSymptoms) lines.push(`  - ${s.label}`);
   }
   if (brief.userNotes != null && brief.userNotes.trim().length > 0) {
-    lines.push(`- Owner notes: "${brief.userNotes.trim()}"`);
+    lines.push(`- Owner notes (interview answers, verbatim): "${brief.userNotes.trim()}"`);
   }
+
+  lines.push(
+    '',
+    '## Your reply',
+    'Structure your first reply as:',
+    '1) Most likely cause (one line) and why.',
+    '2) Ranked checks, cheapest first, that the owner can do or ask a shop for.',
+    '3) One question back to the owner if something key is still missing.',
+    "Reply in the language of the owner's words above.",
+  );
 
   return lines.join('\n');
 }

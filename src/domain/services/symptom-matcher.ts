@@ -56,18 +56,52 @@ function normalize(text: string): string {
     .replace(/[̀-ͯ]/g, '');
 }
 
-/** Returns the symptom ids whose keywords appear in the text, in stable
- *  (keyword-table) order. Deterministic; unknown/empty text → []. */
-export function matchSymptoms(text: string): string[] {
-  const haystack = normalize(text);
-  if (haystack.length === 0) return [];
+// Negators that, appearing right before a symptom keyword, flip it to DENIED
+// ("no tira humo blanco" is negative evidence — ADR-0006-A LAMBDA_ABSENT).
+const NEGATORS = ['no', 'ni', 'nunca', 'sin', 'tampoco', 'not', 'never', "doesn't", 'doesnt', "don't", 'dont'];
+// How far back (chars) a negator still governs the keyword
+const NEGATION_WINDOW = 16;
 
-  const matched: string[] = [];
+export interface SymptomMatchResult {
+  readonly confirmed: readonly string[];
+  readonly denied: readonly string[];
+}
+
+function isNegated(haystack: string, keywordIndex: number): boolean {
+  const windowStart = Math.max(0, keywordIndex - NEGATION_WINDOW);
+  const window = haystack.slice(windowStart, keywordIndex);
+  // A sentence break between negator and keyword cancels the negation
+  if (/[.;!?]/.test(window)) return false;
+  const words = window.split(/\s+/).filter(Boolean);
+  return words.some((w) => NEGATORS.includes(w));
+}
+
+/** Symptom ids whose keywords appear in the text, split into confirmed vs
+ *  denied by a preceding negator. Deterministic; empty text → both empty. */
+export function matchSymptomsDetailed(text: string): SymptomMatchResult {
+  const haystack = normalize(text);
+  if (haystack.length === 0) return { confirmed: [], denied: [] };
+
+  const confirmed: string[] = [];
+  const denied: string[] = [];
   for (const [symptomId, keywords] of Object.entries(SYMPTOM_KEYWORDS)) {
     if (SYMPTOM_MAP[symptomId] == null) continue; // guard against table drift
-    if (keywords.some((k) => haystack.includes(k))) {
-      matched.push(symptomId);
+    let sawConfirmed = false;
+    let sawDenied = false;
+    for (const keyword of keywords) {
+      const idx = haystack.indexOf(keyword);
+      if (idx === -1) continue;
+      if (isNegated(haystack, idx)) sawDenied = true;
+      else sawConfirmed = true;
     }
+    // An affirmation anywhere outweighs a denial of another phrasing
+    if (sawConfirmed) confirmed.push(symptomId);
+    else if (sawDenied) denied.push(symptomId);
   }
-  return matched;
+  return { confirmed, denied };
+}
+
+/** Confirmed-only view (backward compatible). */
+export function matchSymptoms(text: string): string[] {
+  return [...matchSymptomsDetailed(text).confirmed];
 }

@@ -14,6 +14,7 @@ import {
   briefsTable,
   conversationTurnsTable,
   outcomesTable,
+  symptomCandidatesTable,
   type SessionRow,
   type TroubleCodeRow,
   type ConversationTurnRow,
@@ -124,6 +125,14 @@ export async function initializeDatabase(): Promise<void> {
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS user_symptom_candidates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        description TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
     `);
@@ -270,6 +279,14 @@ export function insertConversationTurn(
 export function insertOutcome(row: typeof outcomesTable.$inferInsert): Promise<void> {
   return enqueueWrite('insert outcome', () => {
     getDb().insert(outcomesTable).values(row).run();
+  });
+}
+
+export function insertSymptomCandidate(
+  row: typeof symptomCandidatesTable.$inferInsert,
+): Promise<void> {
+  return enqueueWrite('insert symptom candidate', () => {
+    getDb().insert(symptomCandidatesTable).values(row).run();
   });
 }
 

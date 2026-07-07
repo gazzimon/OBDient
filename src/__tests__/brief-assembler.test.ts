@@ -50,11 +50,18 @@ function input(overrides: Partial<BriefInput> = {}): BriefInput {
     troubleCodes: [],
     parameters: {},
     symptomIds: [],
+    describedSymptoms: [],
+    deniedSymptomIds: [],
     userNotes: null,
     now: NOW,
     ...overrides,
   };
 }
+
+const userId = (overrides: Partial<NonNullable<BriefInput['userIdentity']>> = {}) => ({
+  make: null, model: null, year: null, engine: null, mileageKm: null, fuelType: null,
+  ...overrides,
+});
 
 // ---------------------------------------------------------------------------
 // Identity resolution (VIN > user > unknown)
@@ -64,28 +71,29 @@ describe('buildBrief — identity precedence', () => {
   it('uses the decoded vehicle when available (source: vin)', () => {
     const brief = buildBrief(input({ vehicle: vehicle() }));
     expect(brief.identity).toEqual({
-      make: 'Chevrolet', model: 'Corsa', year: 2008, engine: null, source: 'vin',
+      make: 'Chevrolet', model: 'Corsa', year: 2008, engine: null, fuelType: null, source: 'vin',
     });
   });
 
   it('falls back to the user-confirmed identity when VIN decode failed', () => {
     const brief = buildBrief(input({
       vehicle: vehicle({ make: 'Unknown', model: 'Unknown', year: null }),
-      userIdentity: { make: 'Fiat', model: 'Palio', year: 2013, engine: '1.4' },
+      userIdentity: userId({ make: 'Fiat', model: 'Palio', year: 2013, engine: '1.4', fuelType: 'petrol' }),
     }));
     expect(brief.identity).toEqual({
-      make: 'Fiat', model: 'Palio', year: 2013, engine: '1.4', source: 'user',
+      make: 'Fiat', model: 'Palio', year: 2013, engine: '1.4', fuelType: 'petrol', source: 'user',
     });
   });
 
-  it('user fields fill gaps the VIN path left (engine, year)', () => {
+  it('user fields fill gaps the VIN path left (engine, year, mileage)', () => {
     const brief = buildBrief(input({
       vehicle: vehicle({ year: null }),
-      userIdentity: { make: null, model: null, year: 2008, engine: '1.6' },
+      userIdentity: userId({ year: 2008, engine: '1.6', mileageKm: 150000 }),
     }));
     expect(brief.identity.source).toBe('vin');
     expect(brief.identity.year).toBe(2008);
     expect(brief.identity.engine).toBe('1.6');
+    expect(brief.mileageKm).toBe(150000); // user-parsed mileage fills the gap
   });
 
   it('all-null when nothing is known (source: unknown)', () => {
@@ -215,7 +223,38 @@ describe('renderBriefPrompt', () => {
     const prompt = renderBriefPrompt(buildBrief(input()));
     expect(prompt).toContain('No stored DTCs');
     expect(prompt).toContain('No live snapshot available');
-    expect(prompt).toContain('None reported');
+    expect(prompt).toContain('None matched the symptom catalog');
+  });
+
+  it('renders user-described and denied symptoms as their own sections', () => {
+    const prompt = renderBriefPrompt(buildBrief(input({
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302', 'critical')],
+      describedSymptoms: ['se sacude al acelerar en subida'],
+      deniedSymptomIds: ['sym_smoke_blue'],
+    })));
+    expect(prompt).toContain('Owner-described (not in catalog, verbatim):');
+    expect(prompt).toContain('"se sacude al acelerar en subida"');
+    expect(prompt).toContain('Explicitly DENIED by the owner');
+    expect(prompt).toContain('Blue smoke from exhaust');
+  });
+
+  it('renders fuel type with the identity and the senior output contract', () => {
+    const prompt = renderBriefPrompt(buildBrief(input({
+      vehicle: vehicle(),
+      userIdentity: userId({ engine: '1.6', fuelType: 'petrol' }),
+      troubleCodes: [dtc('P0302', 'critical')],
+    })));
+    expect(prompt).toContain('engine 1.6 petrol');
+    expect(prompt).toContain('Ranked checks, cheapest first');
+    expect(prompt).toContain("Reply in the language of the owner's words above.");
+  });
+
+  it('redacts PII inside described symptoms too', () => {
+    const brief = buildBrief(input({
+      describedSymptoms: ['vibra desde que la patente AB123CD toco el cordon'],
+    }));
+    expect(brief.describedSymptoms[0]).not.toContain('AB123CD');
   });
 });
 

@@ -1,5 +1,7 @@
-// Tests for the ADR-0009 session state machine: intake → handoff → senior,
-// with honest degradation to the local junior at every failure point.
+// Tests for the ADR-0009 session state machine, intake v2:
+// ladder interview (identity → OBD → symptoms → senses → conditions),
+// "catalog never discard" (user-described + denied symptoms), bilingual
+// template fallback, and honest degradation at every failure point.
 // All ports are fakes — no network, no DB, no model.
 
 import {
@@ -79,18 +81,25 @@ function fakeSenior(configured = true): SeniorAgentPort & {
 function fakeLog(): CaseLogPort & {
   turns: { role: string; content: string }[];
   briefs: { prompt: string }[];
+  candidates: string[];
 } {
   const turns: { role: string; content: string }[] = [];
   const briefs: { prompt: string }[] = [];
+  const candidates: string[] = [];
   return {
     turns,
     briefs,
+    candidates,
     logTurn: (_s, role, content) => { turns.push({ role, content }); },
     logBrief: (_s, _b, prompt) => { briefs.push({ prompt }); },
+    logSymptomCandidate: (_s, description) => { candidates.push(description); },
   };
 }
 
-describe('intake phase', () => {
+const fullCase = (text: string, codes: TroubleCode[] = [dtc('P0302')]) =>
+  input(text, { vehicle: vehicle(), troubleCodes: codes, parameters: { RPM: param('RPM', 850) } });
+
+describe('intake phase — ladder', () => {
   it('passes general chat through to the junior without starting a case', async () => {
     const junior = fakeJunior();
     const senior = fakeSenior();
@@ -102,147 +111,147 @@ describe('intake phase', () => {
     expect(senior.calls).toHaveLength(0);
   });
 
-  it('a diagnostic message without identity triggers an intake question, not a diagnosis', async () => {
+  it('Q1 asks for the full vehicle identity, in the owner language (es)', async () => {
     const junior = fakeJunior();
     const log = fakeLog();
     const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), log);
 
     const res = await uc.execute('s1', input('mi auto no arranca', { troubleCodes: [dtc('P0335')] }));
     expect(res.source).toBe('carpsy');
-    expect(res.text).toContain('make, model and year');
-    expect(junior.calls).toHaveLength(0); // no junior diagnosis — intake owns the turn
+    // Spanish template, asking for everything at once
+    expect(res.text).toContain('marca, modelo, año');
+    expect(res.text).toContain('kilometraje');
+    expect(junior.calls).toHaveLength(0); // intake owns the turn
     expect(log.turns.map((t) => t.role)).toEqual(['user', 'junior']);
   });
 
-  it('hands off after identity is provided: ONE senior call fed with the brief', async () => {
+  it('full interview: identity → conditions → handoff with the enriched brief', async () => {
+    const senior = fakeSenior();
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
+    const codes = [dtc('P0335')];
+
+    // Symptom arrives in msg 1 ("no arranca"); identity is asked
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    // Identity answered (mileage + fuel included) → conditions question
+    const q2 = await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    expect(q2.source).toBe('carpsy');
+    expect(q2.text).toContain('desde cuándo');
+    // Conditions answered → the ONE senior call
+    const res = await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+    expect(res.source).toBe('claude');
+    expect(senior.calls).toHaveLength(1);
+
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt).toContain('Chevrolet Corsa 2008');
+    expect(prompt).toContain('petrol');
+    expect(prompt).toContain('Odometer: 150000 km');
+    expect(prompt).toContain('P0335');
+    expect(prompt).toContain('Engine does not start');
+    expect(prompt).toContain('desde hace una semana'); // interview answers travel
+    expect(log.briefs).toHaveLength(1);
+  });
+
+  it('VIN + DTCs still get interviewed: symptom probe (hinted) then conditions', async () => {
+    const senior = fakeSenior();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+
+    const q1 = await uc.execute('s1', fullCase('diagnose my codes'));
+    expect(senior.calls).toHaveLength(0);
+    expect(q1.text).toContain('Rough / shaky idle'); // hint from P0302's fault class
+
+    const q2 = await uc.execute('s1', fullCase('tiembla en ralenti y titila el check'));
+    expect(q2.text).toContain('desde cuándo'); // language followed the owner
+
+    const res = await uc.execute('s1', fullCase('desde ayer, en frio'));
+    expect(res.source).toBe('claude');
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt).toContain('Rough / shaky idle');
+    expect(prompt).toContain('Check engine light FLASHING');
+  });
+
+  it('symptoms given upfront still get the conditions question', async () => {
+    const senior = fakeSenior();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+
+    const q1 = await uc.execute('s1', fullCase('mi auto tiembla en ralenti'));
+    expect(q1.text).toContain('desde cuándo');
+    const res = await uc.execute('s1', fullCase('desde hace una semana, en frio'));
+    expect(res.source).toBe('claude');
+  });
+
+  it('catalogs substantive descriptions that match no taxonomy entry (never discards)', async () => {
     const senior = fakeSenior();
     const log = fakeLog();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
 
-    await uc.execute('s1', input('no arranca', { troubleCodes: [dtc('P0335')] }));
-    const res = await uc.execute('s1', input('es un chevrolet corsa 2008 1.6', { troubleCodes: [dtc('P0335')] }));
+    await uc.execute('s1', fullCase('diagnose my codes'));            // symptom probe
+    await uc.execute('s1', fullCase('se sacude al acelerar en subida')); // no keyword match
+    expect(log.candidates).toEqual(['se sacude al acelerar en subida']);
 
+    const res = await uc.execute('s1', fullCase('desde ayer'));       // conditions answered
     expect(res.source).toBe('claude');
-    expect(res.text).toBe('senior reply #1');
-    expect(senior.calls).toHaveLength(1);
-
-    const briefPrompt = senior.calls[0]?.[0]?.content ?? '';
-    expect(briefPrompt).toContain('Chevrolet Corsa 2008');
-    expect(briefPrompt).toContain('P0335');
-    expect(briefPrompt).toContain('Engine does not start'); // symptom captured from "no arranca"
-    expect(log.briefs).toHaveLength(1);
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt).toContain('se sacude al acelerar en subida'); // user-described travels
   });
 
-  it('handoff waits for OBD evidence even with full identity (one GOOD call)', async () => {
+  it('denied symptoms become negative evidence in the brief', async () => {
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
 
-    const res = await uc.execute('s1', input('mi chevrolet corsa 2008 tira humo azul'));
-    expect(senior.calls).toHaveLength(0);
-    expect(res.text).toContain('no OBD data yet');
+    await uc.execute('s1', fullCase('tiembla en ralenti pero no tira humo azul'));
+    const res = await uc.execute('s1', fullCase('desde hace un mes, siempre'));
+    expect(res.source).toBe('claude');
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt).toContain('DENIED');
+    expect(prompt).toContain('Blue smoke');
   });
 
-  it('even with VIN + DTCs, the junior interviews for symptoms BEFORE the handoff', async () => {
+  it('an owner who cannot describe symptoms exhausts both probes, then the senior gets the case', async () => {
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+    const vague = () => fullCase('anda raro pero no se explicar');
 
-    // First message: hard G0 complete, but no symptoms yet → probe, not handoff
-    const res = await uc.execute('s1', input('diagnose my codes', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-      parameters: { RPM: param('RPM', 850) },
-    }));
-    expect(senior.calls).toHaveLength(0);
-    expect(res.source).toBe('carpsy');
-    // The probe is hinted by the DTC's fault class (misfire → its symptoms)
-    expect(res.text).toContain('Rough / shaky idle');
-
-    // Symptom reply completes the interview → handoff with the symptom aboard
-    const res2 = await uc.execute('s1', input('tiembla en ralenti y titila el check', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-      parameters: { RPM: param('RPM', 850) },
-    }));
-    expect(res2.source).toBe('claude');
-    expect(senior.calls).toHaveLength(1);
-    const briefPrompt = senior.calls[0]?.[0]?.content ?? '';
-    expect(briefPrompt).toContain('Rough / shaky idle');
-    expect(briefPrompt).toContain('Check engine light FLASHING');
+    const q1 = await uc.execute('s1', vague()); // open symptoms probe
+    const q2 = await uc.execute('s1', vague()); // senses probe
+    expect(q1.source).toBe('carpsy');
+    expect(q2.source).toBe('carpsy');
+    const res = await uc.execute('s1', vague()); // probes exhausted, G0 holds
+    expect(res.source).toBe('claude');
   });
 
-  it('symptoms given upfront still get ONE refining question (onset/conditions)', async () => {
-    const senior = fakeSenior();
-    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+  it('gives up after the question cap when the hard G0 never completes', async () => {
+    const junior = fakeJunior();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog());
 
-    const res = await uc.execute('s1', input('mi auto tiembla en ralenti', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    }));
-    expect(senior.calls).toHaveLength(0);
-    expect(res.text).toContain('since when');
-
-    const res2 = await uc.execute('s1', input('desde hace una semana, en frio', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    }));
-    expect(res2.source).toBe('claude');
-  });
-
-  it('an owner who gives nothing after the question cap still gets the senior (hard G0 holds)', async () => {
-    const senior = fakeSenior();
-    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
-    const caseInput = () => input('anda raro pero no se explicar', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    });
-
-    for (let i = 0; i < 4; i++) {
-      const res = await uc.execute('s1', caseInput());
+    for (let i = 0; i < 6; i++) {
+      const res = await uc.execute('s1', input('no se que auto es', { troubleCodes: [dtc('P0300')] }));
       expect(res.source).toBe('carpsy');
     }
-    const res = await uc.execute('s1', caseInput());
-    expect(res.source).toBe('claude'); // a decent call beats none
+    const res = await uc.execute('s1', input('sigue igual', { troubleCodes: [dtc('P0300')] }));
+    expect(res.text).toBe('junior reply');
+    expect(junior.calls).toHaveLength(1);
   });
 
   it('the brief prompt sent to the senior never contains the VIN', async () => {
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
-    const caseInput = (text: string) => input(text, {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    });
 
-    await uc.execute('s1', caseInput('mi vin es 3G1SF21649S123456, revisa los codigos'));
-    await uc.execute('s1', caseInput('tiembla en ralenti'));
+    await uc.execute('s1', fullCase('mi vin es 3G1SF21649S123456, revisa los codigos'));
+    await uc.execute('s1', fullCase('tiembla en ralenti'));
+    await uc.execute('s1', fullCase('desde ayer'));
 
     expect(senior.calls).toHaveLength(1);
-    const briefPrompt = senior.calls[0]?.[0]?.content ?? '';
-    expect(briefPrompt.length).toBeGreaterThan(0);
-    expect(briefPrompt).not.toContain('3G1SF21649S123456');
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt.length).toBeGreaterThan(0);
+    expect(prompt).not.toContain('3G1SF21649S123456');
   });
 
-  it('gives up interviewing after the question cap and lets the junior work', async () => {
-    const junior = fakeJunior();
-    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog());
-
-    // 4 unhelpful replies consume the cap, the 5th goes to the junior
-    for (let i = 0; i < 4; i++) {
-      const res = await uc.execute('s1', input('no se que auto es', { troubleCodes: [dtc('P0300')] }));
-      expect(res.text).toContain('?');
-    }
-    const res = await uc.execute('s1', input('sigue fallando', { troubleCodes: [dtc('P0300')] }));
-    expect(res.text).toBe('junior reply');
-    expect(junior.calls).toHaveLength(1);
-  });
-
-  it('degrades to the junior when the senior is not configured', async () => {
+  it('degrades to the junior when the senior is not configured (no pointless interview)', async () => {
     const junior = fakeJunior();
     const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(false), fakeLog());
 
-    const res = await uc.execute('s1', input('diagnose', {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    }));
+    const res = await uc.execute('s1', fullCase('diagnose'));
     expect(res.source).toBe('carpsy');
     expect(junior.calls).toHaveLength(1);
   });
@@ -251,12 +260,9 @@ describe('intake phase', () => {
 describe('senior phase', () => {
   async function toSeniorPhase(senior: ReturnType<typeof fakeSenior>, log = fakeLog()) {
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
-    const caseInput = (text: string) => input(text, {
-      vehicle: vehicle(),
-      troubleCodes: [dtc('P0302')],
-    });
-    await uc.execute('s1', caseInput('diagnose'));                    // → symptom probe
-    await uc.execute('s1', caseInput('tiembla en ralenti'));          // → handoff
+    await uc.execute('s1', fullCase('diagnose'));                 // → symptom probe
+    await uc.execute('s1', fullCase('tiembla en ralenti'));       // → conditions
+    await uc.execute('s1', fullCase('desde ayer, en frio'));      // → handoff
     return uc;
   }
 
@@ -295,30 +301,54 @@ describe('senior phase', () => {
     await uc.execute('s1', input('gracias'));
 
     const roles = log.turns.map((t) => t.role);
-    expect(roles).toEqual(['user', 'junior', 'user', 'senior', 'user', 'senior']);
+    expect(roles).toEqual(['user', 'junior', 'user', 'junior', 'user', 'senior', 'user', 'senior']);
   });
 });
 
-describe('interviewer (LLM question phrasing)', () => {
-  const intakeInput = () => input('no arranca', { troubleCodes: [dtc('P0335')] });
-
+describe('interviewer (LLM question phrasing over the briefing)', () => {
   it('uses the LLM question when it passes the sanity floor', async () => {
     const interviewer: InterviewerPort = {
       phraseQuestion: async () => '¿Qué marca, modelo y año es tu vehículo?',
     };
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), fakeLog(), interviewer);
-    const res = await uc.execute('s1', intakeInput());
+    const res = await uc.execute('s1', input('no arranca', { troubleCodes: [dtc('P0335')] }));
     expect(res.text).toBe('¿Qué marca, modelo y año es tu vehículo?');
   });
 
-  it('falls back to the template when the LLM output is garbage or fails', async () => {
-    const garbage: InterviewerPort = { phraseQuestion: async () => 'ok' };
-    const throwing: InterviewerPort = { phraseQuestion: async () => { throw new Error('model not loaded'); } };
+  it('the briefing block carries the case file and the objective', async () => {
+    let received = '';
+    const interviewer: InterviewerPort = {
+      phraseQuestion: async (briefing) => { received = briefing; return '¿Y el año del vehículo?'; },
+    };
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), fakeLog(), interviewer);
+    await uc.execute('s1', input('mi auto no arranca', { troubleCodes: [dtc('P0335')] }));
 
-    for (const interviewer of [garbage, throwing]) {
-      const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), fakeLog(), interviewer);
-      const res = await uc.execute('s1', intakeInput());
-      expect(res.text).toContain('make, model and year');
-    }
+    expect(received).toContain('CASE FILE');
+    expect(received).toContain('P0335');
+    expect(received).toContain('Engine does not start'); // confirmed symptom visible
+    expect(received).toContain('Owner language: Spanish');
+    expect(received).toContain('OBJECTIVE');
+  });
+
+  it('non-question LLM output is cataloged as junior hypothesis and the template ships', async () => {
+    const interviewer: InterviewerPort = {
+      phraseQuestion: async () => 'Puede ser la bomba de nafta, es una falla comun en ese modelo.',
+    };
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), log, interviewer);
+    const res = await uc.execute('s1', input('no arranca', { troubleCodes: [dtc('P0335')] }));
+
+    expect(res.text).toContain('marca, modelo, año'); // template, not the diagnosis
+    const hypothesis = log.turns.find((t) => t.content.startsWith('[hypothesis'));
+    expect(hypothesis?.content).toContain('bomba de nafta'); // cataloged, not lost
+  });
+
+  it('falls back to the template when the LLM fails', async () => {
+    const throwing: InterviewerPort = {
+      phraseQuestion: async () => { throw new Error('model not loaded'); },
+    };
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), fakeLog(), throwing);
+    const res = await uc.execute('s1', input('no arranca', { troubleCodes: [dtc('P0335')] }));
+    expect(res.text).toContain('marca, modelo, año');
   });
 });

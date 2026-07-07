@@ -235,9 +235,12 @@ export class QvacSDKDataSource {
 
   // Multi-turn chat: receives the full conversation history and returns the next reply.
   // `systemContext` is injected once as the first user turn so QVAC has vehicle + DTC context.
+  // `systemPrompt` selects the role (default: diagnostic junior; the ADR-0009
+  // interviewer passes its own — PLAN-001 Pattern 2, per-role prompts).
   async chat(
     systemContext: string,
     history: readonly { role: 'user' | 'assistant'; content: string }[],
+    systemPrompt: string = SYSTEM_PROMPT,
   ): Promise<QvacInterpretationResult> {
     if (this.modelId === null) {
       throw new QvacUnavailableError('QVAC model is not loaded. Call initialize() first.');
@@ -267,7 +270,7 @@ export class QvacSDKDataSource {
     // Without this, the first real user message follows the context directly as a second consecutive
     // user turn — invalid chat format that confuses the model.
     const llmHistory = [
-      { role: 'system' as const,    content: SYSTEM_PROMPT },
+      { role: 'system' as const,    content: systemPrompt },
       { role: 'user' as const,      content: boundedContext },
       { role: 'assistant' as const, content: 'Understood. I have the vehicle data. How can I help?' },
       ...cappedHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),

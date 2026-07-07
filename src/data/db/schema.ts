@@ -87,6 +87,16 @@ export const outcomesTable = sqliteTable('outcomes', {
   createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
 });
 
+// Owner symptom descriptions that matched no taxonomy entry — raw material
+// for growing the symptom ontology (ADR-0006-A Phase 4 curation loop)
+export const symptomCandidatesTable = sqliteTable('user_symptom_candidates', {
+  id: int('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+  sessionId: text('session_id').notNull(),
+  description: text('description').notNull(),
+  createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type SymptomCandidateRow = typeof symptomCandidatesTable.$inferSelect;
 export type BriefRow = typeof briefsTable.$inferSelect;
 export type ConversationTurnRow = typeof conversationTurnsTable.$inferSelect;
 export type OutcomeRow = typeof outcomesTable.$inferSelect;

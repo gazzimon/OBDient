@@ -11,7 +11,8 @@ export interface BriefVehicleIdentity {
   readonly make: string | null;
   readonly model: string | null;
   readonly year: number | null;
-  readonly engine: string | null; // displacement, e.g. "1.6"
+  readonly engine: string | null;   // displacement, e.g. "1.6"
+  readonly fuelType: string | null; // petrol|diesel|cng|hybrid|electric
   readonly source: IdentitySource;
   // Deliberately NO `vin` field — the data contract is enforced by the type.
 }
@@ -44,6 +45,11 @@ export interface DiagnosticBrief {
   readonly vehicleState: VehicleState;
   readonly liveReadings: readonly BriefReading[];
   readonly symptoms: readonly BriefSymptom[];
+  // Owner descriptions that did not match the curated taxonomy — first-class
+  // evidence (provenance: user), verbatim but redacted. Nothing is discarded.
+  readonly describedSymptoms: readonly string[];
+  // Symptoms the owner explicitly denied — negative evidence (ADR-0006-A)
+  readonly deniedSymptoms: readonly BriefSymptom[];
   readonly userNotes: string | null; // already redacted (redactText)
   readonly createdAt: number;        // epoch ms, injected by the caller
 }
