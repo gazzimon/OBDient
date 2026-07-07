@@ -42,7 +42,7 @@ function bytesToDtcCode(highByte: string, lowByte: string): string {
 
 // Assigns severity based on the DTC code range.
 // These are conservative heuristics — a full DTC database lookup would be more accurate.
-function classifySeverity(code: string): DtcSeverity {
+export function classifySeverity(code: string): DtcSeverity {
   const numeric = parseInt(code.slice(1), 16);
 
   // P0 series: powertrain generic — most are warnings, some are critical
