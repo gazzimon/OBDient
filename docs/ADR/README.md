@@ -38,6 +38,7 @@ consume número de ADR.
 | 0006-A | Evidencia sintomática reportada por el usuario (satélite de 0006) | Propuesto | [0006-A-sintomas-reportados-usuario.md](0006-A-sintomas-reportados-usuario.md) |
 | 0007 | Firma y rotación de claves de los artefactos distribuidos | Propuesto | [0007-firma-y-rotacion-de-claves.md](0007-firma-y-rotacion-de-claves.md) |
 | 0008 | Captura de readiness y freeze frame (Mode 01 PID 01 / Mode 02; Mode 06 fuera) | Propuesto | [0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md) |
+| 0009 | Admisión local → handoff senior — el junior entrevista, el senior conduce, la sesión persiste | Propuesto | [0009-admision-local-handoff-senior.md](0009-admision-local-handoff-senior.md) |
 
 ### Documentos de plan relacionados (no son ADRs)
 
@@ -65,7 +66,12 @@ trabajo, no decoración:
   toma la decisión de hardware (readiness Mode 01 PID 01 → freeze frame Mode 02; Mode 06 fuera) que
   PLAN-001 §4 había reservado para 0007 antes de que 0007 se usara para firma de claves. Es el ADR de
   los hitos M6/M7 de PLAN-002.
-- **Numeración al día:** 0001–0008 asignados y redactados; sin huecos. **0006-A** es el
+- ✅ **0009 redactado.** [0009-admision-local-handoff-senior.md](0009-admision-local-handoff-senior.md)
+  redefine el flujo diagnóstico como pipeline de sesión (admisión CARpsy → brief
+  determinístico redactado → conversación senior → persistencia append-only) y modifica
+  deliberadamente la premisa "lo diagnóstico no sale del device" del router, con contrato
+  de datos explícito (viajan datos del vehículo; nunca VIN ni identidad del usuario).
+- **Numeración al día:** 0001–0009 asignados y redactados; sin huecos. **0006-A** es el
   primer ADR *satélite*: extiende una decisión existente (0006) en vez de tomar una nueva
   independiente, y por eso hereda su número con sufijo de letra en lugar de consumir 0009.
   La regla de "un número, una vez" se mantiene; el sufijo señala dependencia estructural directa.
@@ -110,6 +116,10 @@ Los ocho ADRs están redactados (todos `Propuesto`, salvo 0001 `Aceptado`). El r
 de implementación lo fija **PLAN-002** ([../../002.txt](../../002.txt)): el segundo lazo
 de calidad (validación en campo de un diagnóstico vía el gate determinístico), con la
 columna social/aprendizaje (0002/0003/0004/0005/0007) **congelada como post-MVP**.
+
+> **Actualización 2026-07-06:** ADR-0009 inserta el track de admisión/handoff senior
+> como prioridad de producto por encima del orden M1→M3 original: M0 (hecho) → Fase 0-3
+> de ADR-0009 (que absorben M1 y la Fase 0-1 de ADR-0006-A) → gate M3 como pre-flight.
 
 1. **Empezar por M0 de PLAN-002** = Fase 0 de ADR-0006 (`faultClassFor()` puro) — cero
    cambio de comportamiento, prerequisito de todo el núcleo.
