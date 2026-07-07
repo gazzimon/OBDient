@@ -1,11 +1,24 @@
-// Claude API datasource — cloud fallback for general automotive questions.
-// Only receives: vehicle make/model/year + user question. Never receives VIN or raw sensor data.
+// Claude API datasource — general automotive questions (answerGeneral), CARpsy
+// quality audit (evaluateResponse), and the ADR-0009 senior conversation
+// (converseSenior, fed a deterministic redacted brief).
+// Data contract: vehicle data may travel; the VIN and user identity never do
+// (enforced upstream by DiagnosticBrief construction + redactText).
 
 import { useSettingsStore } from '@/store/settingsStore';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const GENERAL_MODEL  = 'claude-haiku-4-5-20251001';
 const EVAL_MODEL     = 'claude-haiku-4-5-20251001';
+// Senior diagnostician (ADR-0009): one well-fed call per case, so it earns a
+// stronger model than the general/eval paths.
+const SENIOR_MODEL   = 'claude-sonnet-5';
+
+const SENIOR_SYSTEM =
+  'You are a senior automotive diagnostic technician. A local intake agent hands ' +
+  'you structured cases collected from real vehicles over OBD-II; you conduct the ' +
+  'diagnosis with the owner from there until the case is resolved. Be concrete and ' +
+  'practical, order checks cheapest-first, and reply in the language the owner ' +
+  'writes in. Never ask for the VIN, license plate, or any personal data.';
 
 export interface EvaluationResult {
   score: number;        // 1–5
@@ -43,6 +56,32 @@ export class ClaudeAPIDataSource {
     await this.assertOk(response);
     const data = (await response.json()) as { content: { text: string }[] };
     return data.content[0]?.text ?? '';
+  }
+
+  // Senior conversation mode (ADR-0009 §3): receives the whole thread — first
+  // turn is the deterministic brief — and returns the next senior reply.
+  // The caller (DiagnosticIntakeSessionUseCase) owns history and fallbacks.
+  async converseSenior(
+    history: readonly { role: 'user' | 'assistant'; content: string }[],
+  ): Promise<string> {
+    const apiKey = this.getKey();
+
+    const response = await fetch(CLAUDE_API_URL, {
+      method: 'POST',
+      headers: this.headers(apiKey),
+      body: JSON.stringify({
+        model: SENIOR_MODEL,
+        max_tokens: 1500,
+        system: SENIOR_SYSTEM,
+        messages: history.map((t) => ({ role: t.role, content: t.content })),
+      }),
+    });
+
+    await this.assertOk(response);
+    const data = (await response.json()) as { content: { text: string }[] };
+    const text = data.content[0]?.text ?? '';
+    if (!text) throw new Error('Claude senior returned an empty response');
+    return text;
   }
 
   // Evaluates a CARpsy response for quality. Returns score 1–5 and an optional correction.

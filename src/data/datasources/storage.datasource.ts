@@ -11,8 +11,12 @@ import {
   troubleCodesTable,
   vehiclesTable,
   pidReadingsTable,
+  briefsTable,
+  conversationTurnsTable,
+  outcomesTable,
   type SessionRow,
   type TroubleCodeRow,
+  type ConversationTurnRow,
 } from '@/data/db/schema';
 import { DatabaseError } from '@/core/errors/obd.errors';
 
@@ -102,6 +106,35 @@ export async function initializeDatabase(): Promise<void> {
         unit TEXT NOT NULL,
         recorded_at INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+    `);
+    // ADR-0009 case base (append-only): briefs, conversation turns, outcomes
+    db.run(`
+      CREATE TABLE IF NOT EXISTS briefs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        brief_json TEXT NOT NULL,
+        prompt TEXT NOT NULL
+      );
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS conversation_turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS outcomes (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        root_cause TEXT,
+        fix TEXT,
+        confirmed INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
       );
     `);
     // Migrations: ALTER TABLE is a no-op if the column already exists on SQLite
@@ -215,6 +248,40 @@ export async function getVehicleByVin(vin: string): Promise<typeof vehiclesTable
     return rows[0] ?? null;
   } catch (err) {
     throw new DatabaseError('Failed to fetch vehicle by VIN', err);
+  }
+}
+
+// ─── ADR-0009 case base (append-only) ────────────────────────────────────────
+
+export function insertBrief(row: typeof briefsTable.$inferInsert): Promise<void> {
+  return enqueueWrite('insert brief', () => {
+    getDb().insert(briefsTable).values(row).run();
+  });
+}
+
+export function insertConversationTurn(
+  row: typeof conversationTurnsTable.$inferInsert,
+): Promise<void> {
+  return enqueueWrite('insert conversation turn', () => {
+    getDb().insert(conversationTurnsTable).values(row).run();
+  });
+}
+
+export function insertOutcome(row: typeof outcomesTable.$inferInsert): Promise<void> {
+  return enqueueWrite('insert outcome', () => {
+    getDb().insert(outcomesTable).values(row).run();
+  });
+}
+
+export async function getTurnsBySession(sessionId: string): Promise<ConversationTurnRow[]> {
+  try {
+    return getDb()
+      .select()
+      .from(conversationTurnsTable)
+      .where(eq(conversationTurnsTable.sessionId, sessionId))
+      .all();
+  } catch (err) {
+    throw new DatabaseError('Failed to fetch conversation turns', err);
   }
 }
 

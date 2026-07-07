@@ -55,6 +55,42 @@ export const pidReadingsTable = sqliteTable('pid_readings', {
   recordedAt: int('recorded_at', { mode: 'timestamp' }).notNull(),
 });
 
+// ─── ADR-0009: diagnosis & solutions case base (append-only) ─────────────────
+
+// The structured handoff snapshot sent to the senior (redacted; no VIN)
+export const briefsTable = sqliteTable('briefs', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull(),
+  createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
+  // Full DiagnosticBrief JSON
+  briefJson: text('brief_json').notNull(),
+  // Exact prompt rendered for the senior (reproducibility / audit)
+  prompt: text('prompt').notNull(),
+});
+
+// Every turn of the case: intake interview + senior conversation
+export const conversationTurnsTable = sqliteTable('conversation_turns', {
+  id: int('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+  sessionId: text('session_id').notNull(),
+  role: text('role', { enum: ['user', 'junior', 'senior'] }).notNull(),
+  content: text('content').notNull(),
+  createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+// Case closure — "what was it really? what fixed it?" (PLAN-002 UX4 / ADR-0004)
+export const outcomesTable = sqliteTable('outcomes', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull(),
+  rootCause: text('root_cause'),
+  fix: text('fix'),
+  confirmed: int('confirmed', { mode: 'boolean' }).notNull().default(false),
+  createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type BriefRow = typeof briefsTable.$inferSelect;
+export type ConversationTurnRow = typeof conversationTurnsTable.$inferSelect;
+export type OutcomeRow = typeof outcomesTable.$inferSelect;
+
 export type SessionRow = typeof sessionsTable.$inferSelect;
 export type TroubleCodeRow = typeof troubleCodesTable.$inferSelect;
 export type VehicleRow = typeof vehiclesTable.$inferSelect;

@@ -15,6 +15,9 @@ import { ClearTroubleCodesUseCase } from '@/domain/usecases/clear-trouble-codes'
 import { InterpretWithQVACUseCase } from '@/domain/usecases/interpret-with-qvac';
 import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
+import { DiagnosticIntakeSessionUseCase } from '@/domain/usecases/diagnostic-intake-session';
+import { caseLog } from '@/data/datasources/case-log.datasource';
+import { qvacInterviewer } from '@/data/datasources/interviewer.adapter';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 // Initialize Hypercore network conditionally based on persisted user preference.
@@ -29,6 +32,14 @@ const obdRepo    = new OBDRepositoryImpl();
 const llmRepo    = new LLMRepositoryImpl();
 const reportRepo = new ReportRepositoryImpl();
 const carpsy     = new ChatWithQVACUseCase(llmRepo);
+const multiAgent = new MultiAgentChatUseCase(carpsy, claudeAPI, claudeKnowledge);
+
+// ADR-0009 senior port over the Claude datasource
+const seniorAgent = {
+  isConfigured: () => claudeAPI.isConfigured(),
+  converse: (history: readonly { role: 'user' | 'assistant'; content: string }[]) =>
+    claudeAPI.converseSenior(history),
+};
 
 export const container = {
   // Direct read access for the reports screen (list/detail/delete are queries,
@@ -42,7 +53,14 @@ export const container = {
   clearTroubleCodes: new ClearTroubleCodesUseCase(obdRepo),
   interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
   chatWithQVAC: carpsy,
-  multiAgentChat: new MultiAgentChatUseCase(carpsy, claudeAPI, claudeKnowledge),
+  multiAgentChat: multiAgent,
+  // ADR-0009 session pipeline: intake (junior) → brief → senior conversation
+  diagnosticSession: new DiagnosticIntakeSessionUseCase(
+    multiAgent,
+    seniorAgent,
+    caseLog,
+    qvacInterviewer,
+  ),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices
 } as const;

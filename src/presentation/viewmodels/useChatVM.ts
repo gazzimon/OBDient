@@ -49,13 +49,17 @@ export function useChatVM() {
         { role: 'user', content: userMsg.content },
       ];
 
-      const result = await container.multiAgentChat.execute({
-        vehicle,
-        mileage,
-        troubleCodes: codes,
-        parameters,
-        history,
-      });
+      // ADR-0009 session pipeline: intake → brief → senior handoff
+      const result = await container.diagnosticSession.execute(
+        activeSession?.id ?? 'adhoc',
+        {
+          vehicle,
+          mileage,
+          troubleCodes: codes,
+          parameters,
+          history,
+        },
+      );
 
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
@@ -69,7 +73,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage]);
+  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage, activeSession?.id]);
 
   // Auto-sends the initial QVAC assessment after DTCs are read
   const sendInitialAssessment = useCallback(async (prompt: string) => {
@@ -77,13 +81,16 @@ export function useChatVM() {
     setChatError(null);
     setIsResponding(true);
     try {
-      const result = await container.multiAgentChat.execute({
-        vehicle,
-        mileage,
-        troubleCodes: codes,
-        parameters,
-        history: [{ role: 'user', content: prompt }],
-      });
+      const result = await container.diagnosticSession.execute(
+        activeSession?.id ?? 'adhoc',
+        {
+          vehicle,
+          mileage,
+          troubleCodes: codes,
+          parameters,
+          history: [{ role: 'user', content: prompt }],
+        },
+      );
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
@@ -96,7 +103,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage]);
+  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage, activeSession?.id]);
 
   // Human feedback 👍/👎 — moves confidence of the knowledge the response used.
   // 👍 raises the SHIMI node (verified) and confirms any Claude-origin entries used.
