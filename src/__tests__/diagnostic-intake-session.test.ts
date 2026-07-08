@@ -102,8 +102,12 @@ function fakeLog(): CaseLogPort & {
   };
 }
 
+// A case whose vehicle facts are already complete (VIN identity + mileage), so
+// the ladder goes straight to the symptom probe.
 const fullCase = (text: string, codes: TroubleCode[] = [dtc('P0302')]) =>
-  input(text, { vehicle: vehicle(), troubleCodes: codes, parameters: { RPM: param('RPM', 850) } });
+  input(text, {
+    vehicle: vehicle(), mileage: 150000, troubleCodes: codes, parameters: { RPM: param('RPM', 850) },
+  });
 
 describe('intake phase — ladder (fase 1, deterministic)', () => {
   it('passes general chat through to the junior without starting a case', async () => {

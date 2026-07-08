@@ -33,6 +33,7 @@ import { faultClassClosure } from '@/domain/services/fault-class';
 import {
   buildBrief,
   briefReadiness,
+  hasObdEvidence,
   renderBriefPrompt,
   renderLocalDiagnosisPrompt,
 } from '@/domain/services/brief-assembler';
@@ -40,9 +41,11 @@ import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontol
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 
 // Ladder steps the intake may still need to walk. 'identity' groups
-// make/model/year (asked together, re-asked grouped); mileage and fuel type
-// are requested in the same question but never block the handoff.
-export type IntakeGap = 'identity' | 'obd_evidence' | 'symptoms' | 'senses' | 'conditions';
+// make/model/year AND mileage (asked together, re-asked grouped) — all four are
+// hard requirements now. Fuel type is requested in the same question but never
+// blocks. OBD is no longer a ladder step: the case can be diagnosed from
+// symptoms with the scanner mute (ADR-0006-A).
+export type IntakeGap = 'identity' | 'symptoms' | 'senses' | 'conditions';
 
 // ─── Ports (effects stay outside; fakes in tests) ───────────────────────────
 
@@ -181,45 +184,42 @@ function hasSubstance(text: string): boolean {
 
 // ─── Bilingual template ladder (the deterministic safety net) ────────────────
 
-const FIELD_NAMES: Readonly<Record<Lang, Record<'make' | 'model' | 'year', string>>> = {
-  es: { make: 'la marca', model: 'el modelo', year: 'el año' },
-  en: { make: 'the make', model: 'the model', year: 'the year' },
+type IdentityField = 'make' | 'model' | 'year' | 'mileage';
+
+const FIELD_NAMES: Readonly<Record<Lang, Record<IdentityField, string>>> = {
+  es: { make: 'la marca', model: 'el modelo', year: 'el año', mileage: 'el kilometraje' },
+  en: { make: 'the make', model: 'the model', year: 'the year', mileage: 'the mileage' },
 };
 
 function templateQuestion(
   lang: Lang,
   gap: IntakeGap,
   known: string,
-  missingIdentity: readonly ('make' | 'model' | 'year')[],
+  missing: readonly IdentityField[],
   symptomHints: readonly string[],
 ): string {
   if (lang === 'es') {
     switch (gap) {
       case 'identity':
-        if (known.length > 0 && missingIdentity.length < 3) {
-          const missing = missingIdentity.map((f) => FIELD_NAMES.es[f]).join(' y ');
-          return `Ya tengo: ${known}. Me falta ${missing} — ¿me lo pasás?`;
+        if (known.length > 0 && missing.length > 0 && missing.length < 4) {
+          const list = missing.map((f) => FIELD_NAMES.es[f]).join(' y ');
+          return `Ya tengo: ${known}. Me falta ${list} — ¿me lo pasás?`;
         }
         return (
           'Para empezar necesito conocer el vehículo. Contame marca, modelo, año, ' +
           'kilometraje y motor (nafta/diésel y cilindrada) — por ejemplo: ' +
           '"Chevrolet Corsa 1.6 nafta 2008, 150 mil km".'
         );
-      case 'obd_evidence':
-        return (
-          'Tengo los datos del vehículo, pero todavía no hay lectura OBD. Conectá el ' +
-          'adaptador y tocá "Read DTCs" — el diagnóstico senior solo vale la pena con ' +
-          'datos reales del auto.'
-        );
       case 'symptoms':
         return symptomHints.length > 0
-          ? `¿Qué notás vos en el auto? Por los códigos leídos, señales típicas serían: ${symptomHints.join('; ')}. ¿Notás alguna de esas — o cualquier otra cosa?`
-          : '¿Qué notás vos en el auto? Ruidos, olores, humo, cómo se comporta — cualquier detalle ayuda, no hay respuestas incorrectas.';
+          ? `Contame qué está pasando con el auto — necesito al menos un síntoma concreto para diagnosticar. Por los códigos leídos suele aparecer: ${symptomHints.join('; ')}. ¿Notás alguno, o algo distinto? Decime cuándo pasa y cómo se siente.`
+          : 'Contame qué está pasando con el auto — necesito al menos un síntoma concreto. ¿Qué hace exactamente: ruido, tirón, humo, olor, falta de fuerza, se apaga? Dame el detalle: cuándo pasa y qué sentís.';
       case 'senses':
         return (
-          'Ayudame con los sentidos: ¿hace algún ruido raro (golpeteo, silbido)? ' +
-          '¿Algún olor (a nafta, a quemado, dulce)? ¿Humo por el escape (blanco, azul, ' +
-          'negro)? ¿Alguna luz del tablero prendida?'
+          'Vamos por partes así lo agarramos. ¿ESCUCHÁS algo raro (golpeteo, silbido, ' +
+          'chillido)? ¿HUELE a algo (nafta, quemado, dulce)? ¿VES humo por el escape ' +
+          '(blanco, azul, negro) o alguna luz del tablero? ¿SENTÍS tirones, vibración ' +
+          'o falta de fuerza? Con que me digas una sola ya avanzamos.'
         );
       case 'conditions':
         return (
@@ -231,30 +231,25 @@ function templateQuestion(
   }
   switch (gap) {
     case 'identity':
-      if (known.length > 0 && missingIdentity.length < 3) {
-        const missing = missingIdentity.map((f) => FIELD_NAMES.en[f]).join(' and ');
-        return `So far I have: ${known}. I still need ${missing} — could you tell me?`;
+      if (known.length > 0 && missing.length > 0 && missing.length < 4) {
+        const list = missing.map((f) => FIELD_NAMES.en[f]).join(' and ');
+        return `So far I have: ${known}. I still need ${list} — could you tell me?`;
       }
       return (
         'To get started I need to know the vehicle. Tell me the make, model, year, ' +
         'mileage and engine (petrol/diesel and displacement) — for example: ' +
         '"Chevrolet Corsa 1.6 petrol 2008, 150,000 km".'
       );
-    case 'obd_evidence':
-      return (
-        'I have the vehicle details, but no OBD reading yet. Connect the adapter and ' +
-        'tap "Read DTCs" — the senior diagnosis is only worth doing with real ' +
-        'vehicle data.'
-      );
     case 'symptoms':
       return symptomHints.length > 0
-        ? `What do YOU notice in the car? Based on the codes we read, typical signs would be: ${symptomHints.join('; ')}. Do you notice any of these — or anything else?`
-        : 'What do YOU notice in the car? Noises, smells, smoke, how it behaves — any detail helps, there are no wrong answers.';
+        ? `Tell me what's actually going on — I need at least one concrete symptom to diagnose. With the codes we read, the usual signs are: ${symptomHints.join('; ')}. Do you get any of those, or something else? Tell me when it happens and how it feels.`
+        : "Tell me what's actually going on — I need at least one concrete symptom. What does it do exactly: noise, jerk, smoke, smell, power loss, stalling? Give me the detail: when it happens and what you feel.";
     case 'senses':
       return (
-        'Help me through the senses: any strange noise (knocking, hissing)? Any smell ' +
-        '(fuel, burnt, sweet)? Smoke from the exhaust (white, blue, black)? Any ' +
-        'dashboard light on?'
+        "Let's go sense by sense so we catch it. Do you HEAR anything odd (knocking, " +
+        'hissing, squealing)? Does it SMELL of anything (fuel, burnt, sweet)? Do you ' +
+        'SEE smoke from the exhaust (white, blue, black) or a dashboard light? Do you ' +
+        'FEEL jerking, shaking or power loss? Even one of these moves us forward.'
       );
     case 'conditions':
       return (
@@ -312,10 +307,9 @@ function candidateSymptomLabels(
 }
 
 const GAP_OBJECTIVES: Readonly<Record<IntakeGap, string>> = {
-  identity: 'the vehicle identity: make, model, year, mileage, engine/fuel type',
-  obd_evidence: 'OBD data — ask them to connect the adapter and tap "Read DTCs"',
-  symptoms: 'what symptoms the owner notices (offer the example symptoms as choices)',
-  senses: 'symptoms through the senses: noises, smells, smoke color, dashboard lights',
+  identity: 'the vehicle identity: make, model, year, mileage (all required), engine/fuel type',
+  symptoms: 'at least one concrete symptom the owner notices — press for specifics (offer the example symptoms as choices)',
+  senses: 'symptoms through the senses: noises, smells, smoke color, dashboard lights, feel (jerk/shake/power loss)',
   conditions: 'since when it happens, conditions (cold/hot, idle/accelerating), recent repairs',
 };
 
@@ -423,25 +417,34 @@ export class DiagnosticIntakeSessionUseCase {
       userNotes: state.notes.join('\n'),
       now: Date.now(),
     });
-    const hard = briefReadiness(brief);
+    const hard = briefReadiness(brief);   // make + model + year + mileage
 
-    // Interview sufficiency: at least one symptom (confirmed OR user-described)
-    // plus the conditions exchange; if both symptom probes came up empty, the
-    // interview is honestly exhausted.
+    // Evidence to diagnose from: a reported symptom (mandatory path) or, if the
+    // owner truly can't produce one, whatever the scanner gave us.
     const symptomCount = state.symptomIds.length + state.describedSymptoms.length;
+    const hasSymptom = symptomCount > 0;
+    const obdPresent = hasObdEvidence(brief);
+
+    // Interview sufficiency: vehicle facts complete + at least one symptom +
+    // the conditions exchange. If both symptom probes came up empty we stop
+    // pressing (honest exhaustion) rather than re-asking forever.
     const probesExhausted = state.symptomsProbeAsked && state.sensesProbeAsked;
-    const interviewDone = symptomCount > 0
-      ? state.conditionsAsked
-      : probesExhausted;
+    const interviewDone = hasSymptom ? state.conditionsAsked : probesExhausted;
 
     if (hard.ready && interviewDone) {
-      return this.localDiagnosis(sessionId, state, input, brief);
+      // Diagnose when there is anything to diagnose from (symptom OR OBD).
+      if (hasSymptom || obdPresent) {
+        return this.localDiagnosis(sessionId, state, input, brief);
+      }
+      // Vehicle facts OK but zero evidence — nothing to diagnose. Plain chat.
+      state.phase = 'local_only';
+      return this.juniorTurn(sessionId, input);
     }
 
     if (state.questionsAsked >= MAX_INTAKE_QUESTIONS) {
-      // The owner won't give more. If the hard G0 holds, a decent local call
-      // beats none — diagnose with what exists; otherwise degrade to the junior.
-      if (hard.ready) {
+      // The owner won't give more. Diagnose if the facts hold and there is any
+      // evidence; otherwise degrade to plain local chat.
+      if (hard.ready && (hasSymptom || obdPresent)) {
         return this.localDiagnosis(sessionId, state, input, brief);
       }
       state.phase = 'local_only';
@@ -449,13 +452,14 @@ export class DiagnosticIntakeSessionUseCase {
     }
 
     // ── Pick the next ladder step ──
+    // Identity gap covers make/model/year AND mileage — all four block.
     const missingIdentity = hard.missing.filter(
-      (m): m is 'make' | 'model' | 'year' => m === 'make' || m === 'model' || m === 'year',
+      (m): m is IdentityField =>
+        m === 'make' || m === 'model' || m === 'year' || m === 'mileage',
     );
     let gap: IntakeGap;
     if (missingIdentity.length > 0) gap = 'identity';
-    else if (hard.missing.includes('obd_evidence')) gap = 'obd_evidence';
-    else if (symptomCount === 0) gap = state.symptomsProbeAsked ? 'senses' : 'symptoms';
+    else if (!hasSymptom) gap = state.symptomsProbeAsked ? 'senses' : 'symptoms';
     else gap = 'conditions';
 
     if (gap === 'symptoms') state.symptomsProbeAsked = true;
@@ -669,7 +673,7 @@ export class DiagnosticIntakeSessionUseCase {
     state: CaseState,
     brief: DiagnosticBrief,
     gap: IntakeGap,
-    missingIdentity: readonly ('make' | 'model' | 'year')[],
+    missingIdentity: readonly IdentityField[],
     symptomHints: readonly string[],
   ): Promise<{ text: string; fromLlm: boolean }> {
     const template = templateQuestion(

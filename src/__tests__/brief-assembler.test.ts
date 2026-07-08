@@ -1,7 +1,7 @@
 // Tests for brief-assembler.ts — deterministic handoff brief (ADR-0009 §2)
 // and the G0 readiness checklist (§1).
 
-import { buildBrief, briefReadiness, renderBriefPrompt, BriefInput } from '@/domain/services/brief-assembler';
+import { buildBrief, briefReadiness, hasObdEvidence, renderBriefPrompt, BriefInput } from '@/domain/services/brief-assembler';
 import { redactText, REDACTED } from '@/core/utils/redact';
 import type { Vehicle } from '@/domain/entities/vehicle';
 import type { ObdParameter, ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
@@ -150,38 +150,44 @@ describe('buildBrief — composition', () => {
 });
 
 // ---------------------------------------------------------------------------
-// G0 readiness checklist
+// G0 readiness checklist — identity + mileage (OBD is NOT required, ADR-0006-A)
 // ---------------------------------------------------------------------------
 
 describe('briefReadiness (G0)', () => {
-  const completeInput = () => input({
-    vehicle: vehicle(),
-    troubleCodes: [dtc('P0302', 'critical')],
+  it('ready with full identity + mileage, even without any OBD data', () => {
+    const brief = buildBrief(input({ vehicle: vehicle(), mileageKm: 152000 }));
+    expect(briefReadiness(brief)).toEqual({ ready: true, missing: [] });
+    expect(hasObdEvidence(brief)).toBe(false); // no DTCs, no snapshot — still ready
   });
 
-  it('ready with full identity + DTC evidence', () => {
-    expect(briefReadiness(buildBrief(completeInput()))).toEqual({ ready: true, missing: [] });
-  });
-
-  it('a live snapshot also counts as OBD evidence (no DTCs needed)', () => {
+  it('mileage is a hard requirement — identity alone is not enough', () => {
     const brief = buildBrief(input({
       vehicle: vehicle(),
-      parameters: { RPM: param('RPM', 850) },
+      troubleCodes: [dtc('P0302', 'critical')], // OBD present but mileage missing
     }));
-    expect(briefReadiness(brief).ready).toBe(true);
+    expect(briefReadiness(brief)).toEqual({ ready: false, missing: ['mileage'] });
   });
 
-  it('reports each missing identity field', () => {
+  it('reports each missing field including mileage', () => {
     const brief = buildBrief(input({ troubleCodes: [dtc('P0302', 'critical')] }));
-    expect(briefReadiness(brief)).toEqual({ ready: false, missing: ['make', 'model', 'year'] });
+    expect(briefReadiness(brief)).toEqual({
+      ready: false, missing: ['make', 'model', 'year', 'mileage'],
+    });
   });
 
-  it('symptoms alone are NOT enough — the senior call needs vehicle-state data', () => {
+  it('OBD absence never blocks readiness — symptoms can carry the case', () => {
     const brief = buildBrief(input({
       vehicle: vehicle(),
+      mileageKm: 152000,
       symptomIds: ['sym_rough_idle', 'sym_cel_flashing'],
     }));
-    expect(briefReadiness(brief)).toEqual({ ready: false, missing: ['obd_evidence'] });
+    expect(briefReadiness(brief).ready).toBe(true);
+    expect(hasObdEvidence(brief)).toBe(false);
+  });
+
+  it('hasObdEvidence is true with DTCs or a live snapshot', () => {
+    expect(hasObdEvidence(buildBrief(input({ troubleCodes: [dtc('P0302', 'critical')] })))).toBe(true);
+    expect(hasObdEvidence(buildBrief(input({ parameters: { RPM: param('RPM', 850) } })))).toBe(true);
   });
 });
 

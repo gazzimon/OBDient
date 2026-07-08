@@ -108,21 +108,26 @@ export function buildBrief(input: BriefInput): DiagnosticBrief {
   };
 }
 
-// G0 — the handoff checklist (ADR-0009 §1). Identity (make+model+year) plus at
-// least one piece of real OBD evidence: active DTCs or a live snapshot.
-// Reported symptoms enrich the brief but do not substitute for OBD evidence —
-// the senior call is only for cases with vehicle-state data.
+// G0 — the vehicle-facts checklist. Identity (make+model+year) + mileage.
+// OBD evidence is deliberately NOT required: QVAC can diagnose from reported
+// symptoms with the scanner mute (ADR-0006-A). DTCs and live readings still
+// enrich the brief whenever they are present. The "at least one symptom"
+// requirement lives in the intake session (it is evidence, not a vehicle fact).
 export function briefReadiness(brief: DiagnosticBrief): BriefReadiness {
   const missing: MissingField[] = [];
   if (brief.identity.make == null) missing.push('make');
   if (brief.identity.model == null) missing.push('model');
   if (brief.identity.year == null) missing.push('year');
-
-  const hasObdEvidence =
-    brief.dtcs.length > 0 || brief.vehicleState.presentPids.length > 0;
-  if (!hasObdEvidence) missing.push('obd_evidence');
+  if (brief.mileageKm == null) missing.push('mileage');
 
   return { ready: missing.length === 0, missing };
+}
+
+// True when the case has any fault evidence to diagnose from — reported
+// symptoms OR real OBD data. The intake needs at least one of these before
+// asking QVAC for a diagnosis.
+export function hasObdEvidence(brief: DiagnosticBrief): boolean {
+  return brief.dtcs.length > 0 || brief.vehicleState.presentPids.length > 0;
 }
 
 // ---------------------------------------------------------------------------

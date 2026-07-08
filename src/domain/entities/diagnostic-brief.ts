@@ -55,7 +55,10 @@ export interface DiagnosticBrief {
 }
 
 // G0 checklist result — what the intake still has to collect.
-export type MissingField = 'make' | 'model' | 'year' | 'obd_evidence';
+// OBD evidence is NOT here: a case can be diagnosed from symptoms alone
+// (ADR-0006-A), so it never blocks. Mileage now DOES block — it discriminates
+// wear-related causes and is cheap to ask.
+export type MissingField = 'make' | 'model' | 'year' | 'mileage';
 
 export interface BriefReadiness {
   readonly ready: boolean;
