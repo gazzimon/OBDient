@@ -77,10 +77,14 @@ export const conversationTurnsTable = sqliteTable('conversation_turns', {
   createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
 });
 
-// Case closure — "what was it really? what fixed it?" (PLAN-002 UX4 / ADR-0004)
+// Case closure — "was it resolved? what was the cause?" (PLAN-002 UX4 / ADR-0004
+// Phase 0). One row per session (id = sessionId), upserted from tap-only Reports
+// controls. `resolved` is the ground-truth signal that later feeds the
+// Beta-Binomial outcome_evidence; `rootCause` is a chip label, never free text.
 export const outcomesTable = sqliteTable('outcomes', {
   id: text('id').primaryKey(),
   sessionId: text('session_id').notNull(),
+  resolved: text('resolved', { enum: ['yes', 'no', 'pending'] }),
   rootCause: text('root_cause'),
   fix: text('fix'),
   confirmed: int('confirmed', { mode: 'boolean' }).notNull().default(false),

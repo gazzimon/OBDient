@@ -1,5 +1,7 @@
 // Reports: history of saved diagnostic sessions from SQLite.
-// Each item navigates to the interpretation detail screen.
+// Each card navigates to the interpretation detail — and carries a tap-only
+// outcome capture (ADR-0004 Phase 0): "¿se resolvió?" + cause chips derived
+// deterministically from the DTC fault classes. No typing, at the user's pace.
 
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, Pressable, Alert, ActivityIndicator } from 'react-native';
@@ -8,17 +10,49 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { container } from '@/data/container';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
-import type { ReportListItem } from '@/domain/repositories/i-report.repository';
+import type { ReportListItem, OutcomeResolved } from '@/domain/repositories/i-report.repository';
+
+const MINT = '#2DE1A5';
+const AMBER = '#F5A623';
+const MUTED = '#9A9A9A';
+
+function OutcomePill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={4}
+      className={`rounded-full px-3 py-1 border active:opacity-70 ${
+        active ? 'bg-brand-teal border-brand-teal' : 'border-brand-border'
+      }`}
+    >
+      <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 function SessionCard({
   item,
   onPress,
   onDelete,
+  onSaveOutcome,
 }: {
   item: ReportListItem;
   onPress: () => void;
   onDelete: () => void;
+  onSaveOutcome: (resolved: OutcomeResolved, rootCause: string | null) => void;
 }) {
+  const resolved = item.outcome?.resolved ?? null;
+
   return (
     <Pressable
       onPress={onPress}
@@ -29,7 +63,7 @@ function SessionCard({
           {item.startedAt.toLocaleDateString()} · {item.startedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
         <Pressable onPress={onDelete} hitSlop={8} className="active:opacity-60">
-          <MaterialCommunityIcons name="trash-can-outline" size={18} color="#9A9A9A" />
+          <MaterialCommunityIcons name="trash-can-outline" size={18} color={MUTED} />
         </Pressable>
       </View>
 
@@ -42,8 +76,31 @@ function SessionCard({
             {item.messageCount} msg{item.messageCount !== 1 ? 's' : ''}
           </Text>
         )}
-        {item.hasInterpretation && (
-          <Text className="text-brand-teal font-mono text-xs">AI interpreted</Text>
+        {resolved === 'yes' && (
+          <Text className="font-mono text-xs ml-auto" style={{ color: MINT }}>✓ Resuelto</Text>
+        )}
+        {resolved === 'no' && (
+          <Text className="font-mono text-xs ml-auto" style={{ color: AMBER }}>Sin resolver</Text>
+        )}
+      </View>
+
+      {/* Tap-only outcome capture — feeds the learning loop (insertOutcome) */}
+      <View className="mt-3 pt-3 border-t border-brand-border">
+        <View className="flex-row items-center gap-2 flex-wrap">
+          <Text className="text-brand-muted font-mono text-xs mr-1">¿Se resolvió?</Text>
+          <OutcomePill label="Sí" active={resolved === 'yes'} onPress={() => onSaveOutcome('yes', item.outcome?.rootCause ?? null)} />
+          <OutcomePill label="No" active={resolved === 'no'} onPress={() => onSaveOutcome('no', null)} />
+          <OutcomePill label="Aún no" active={resolved === 'pending'} onPress={() => onSaveOutcome('pending', null)} />
+        </View>
+
+        {resolved === 'yes' && item.causeChips.length > 0 && (
+          <View className="flex-row items-center gap-2 flex-wrap mt-2">
+            <Text className="text-brand-muted font-mono text-xs mr-1">¿Qué era?</Text>
+            {item.causeChips.map((c) => (
+              <OutcomePill key={c} label={c} active={item.outcome?.rootCause === c} onPress={() => onSaveOutcome('yes', c)} />
+            ))}
+            <OutcomePill label="Otro" active={item.outcome?.rootCause === 'Otro'} onPress={() => onSaveOutcome('yes', 'Otro')} />
+          </View>
         )}
       </View>
     </Pressable>
@@ -86,6 +143,20 @@ export default function ReportsScreen() {
     ]);
   };
 
+  // Optimistic: reflect the tap immediately, then persist + reload.
+  const saveOutcome = useCallback(
+    (id: string, resolved: OutcomeResolved, rootCause: string | null) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, outcome: { resolved, rootCause } } : s)),
+      );
+      void container.reportRepo.saveOutcome(id, { resolved, rootCause }).then(reload).catch((err) => {
+        console.warn('[Reports] failed to save outcome:', err);
+        void reload();
+      });
+    },
+    [reload],
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
       <View className="flex-1 px-4 pt-3">
@@ -93,12 +164,12 @@ export default function ReportsScreen() {
 
         {!loaded ? (
           <View className="items-center py-12">
-            <ActivityIndicator color="#2DE1A5" />
+            <ActivityIndicator color={MINT} />
           </View>
         ) : sessions.length === 0 ? (
           <View className="items-center py-12">
             <View className="w-24 h-24 rounded-full border-2 border-brand-teal items-center justify-center mb-4">
-              <MaterialCommunityIcons name="file-document-outline" size={36} color="#2DE1A5" />
+              <MaterialCommunityIcons name="file-document-outline" size={36} color={MINT} />
             </View>
             <Text className="text-brand-text font-mono-bold text-base mb-1">
               No reports yet
@@ -118,6 +189,7 @@ export default function ReportsScreen() {
                 item={item}
                 onPress={() => router.push(`/interpretation/${item.id}`)}
                 onDelete={() => confirmDelete(item.id)}
+                onSaveOutcome={(resolved, rootCause) => saveOutcome(item.id, resolved, rootCause)}
               />
             )}
           />

@@ -2,6 +2,15 @@
 
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
 
+// Tap-only case outcome (ADR-0004 Phase 0). `resolved` is the ground-truth
+// signal; `rootCause` is a chip label the user tapped, never free text.
+export type OutcomeResolved = 'yes' | 'no' | 'pending';
+
+export interface CaseOutcome {
+  readonly resolved: OutcomeResolved;
+  readonly rootCause: string | null;
+}
+
 export interface ReportListItem {
   readonly id: string;
   readonly vehicleId: string;
@@ -10,6 +19,11 @@ export interface ReportListItem {
   readonly dtcCount: number;
   readonly messageCount: number;
   readonly hasInterpretation: boolean;
+  // Deterministic candidate causes (DTC fault-class labels) offered as chips —
+  // empty when the case has no mapped DTCs.
+  readonly causeChips: readonly string[];
+  // Current outcome, or null if the user hasn't answered yet.
+  readonly outcome: CaseOutcome | null;
 }
 
 export interface IReportRepository {
@@ -21,6 +35,9 @@ export interface IReportRepository {
 
   // Returns the full session by id, or null if not found.
   getSessionById(id: string): Promise<DiagnosticSession | null>;
+
+  // Upserts the tap-only case outcome (one row per session).
+  saveOutcome(sessionId: string, outcome: CaseOutcome): Promise<void>;
 
   // Permanently removes a session.
   deleteSession(id: string): Promise<void>;

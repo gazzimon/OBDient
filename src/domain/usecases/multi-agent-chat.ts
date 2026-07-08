@@ -16,6 +16,10 @@ export interface MultiAgentChatResult extends LLMInterpretationResult {
   // Set by the intake session when a completed case is waiting for the user
   // to opt into the senior (Claude) review. Drives the offer button in the UI.
   readonly seniorOffer?: boolean;
+  // Set only on diagnosis answers (QVAC preliminary + the senior's first reply).
+  // Drives the single 👍/👎 in the chat — questions, greetings and follow-up
+  // chatter carry no thumb (the case-level outcome lives in Reports instead).
+  readonly rateable?: boolean;
 }
 
 export class MultiAgentChatUseCase {

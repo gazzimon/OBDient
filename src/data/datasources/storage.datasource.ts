@@ -18,6 +18,7 @@ import {
   type SessionRow,
   type TroubleCodeRow,
   type ConversationTurnRow,
+  type OutcomeRow,
 } from '@/data/db/schema';
 import { DatabaseError } from '@/core/errors/obd.errors';
 
@@ -140,6 +141,7 @@ export async function initializeDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS outcomes (
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
+        resolved TEXT,
         root_cause TEXT,
         fix TEXT,
         confirmed INTEGER NOT NULL DEFAULT 0,
@@ -153,6 +155,7 @@ export async function initializeDatabase(): Promise<void> {
       `ALTER TABLE vehicles ADD COLUMN plant_country TEXT`,
       `ALTER TABLE sessions ADD COLUMN messages_json TEXT NOT NULL DEFAULT '[]'`,
       `ALTER TABLE sessions ADD COLUMN mileage REAL`,
+      `ALTER TABLE outcomes ADD COLUMN resolved TEXT`,
     ]) {
       try { db.run(sql); } catch { /* column already exists */ }
     }
@@ -280,6 +283,27 @@ export function insertOutcome(row: typeof outcomesTable.$inferInsert): Promise<v
   return enqueueWrite('insert outcome', () => {
     getDb().insert(outcomesTable).values(row).run();
   });
+}
+
+// One outcome per session (id = sessionId): upsert so the user can change their
+// answer with a tap without piling up rows.
+export function upsertOutcome(row: typeof outcomesTable.$inferInsert): Promise<void> {
+  return enqueueWrite('upsert outcome', () => {
+    getDb().insert(outcomesTable).values(row).onConflictDoUpdate({ target: outcomesTable.id, set: row }).run();
+  });
+}
+
+export async function getOutcomeBySession(sessionId: string): Promise<OutcomeRow | null> {
+  try {
+    const rows = getDb()
+      .select()
+      .from(outcomesTable)
+      .where(eq(outcomesTable.sessionId, sessionId))
+      .all();
+    return rows[0] ?? null;
+  } catch (err) {
+    throw new DatabaseError('Failed to fetch outcome', err);
+  }
 }
 
 export function insertSymptomCandidate(

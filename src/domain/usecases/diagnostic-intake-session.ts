@@ -544,7 +544,11 @@ export class DiagnosticIntakeSessionUseCase {
       });
       state.juniorDiagnosis = result.text;
       this.caseLog.logTurn(sessionId, 'junior', result.text);
-      return this.senior.isConfigured() ? { ...result, seniorOffer: true } : result;
+      // A diagnosis is rateable (one 👍/👎 in the chat); the senior offer rides
+      // along when Claude is available.
+      return this.senior.isConfigured()
+        ? { ...result, rateable: true, seniorOffer: true }
+        : { ...result, rateable: true };
     } catch (err) {
       console.warn('[IntakeSession] local diagnosis failed:', err);
       const msg = state.language === 'es'
@@ -609,6 +613,7 @@ export class DiagnosticIntakeSessionUseCase {
         generatedAt: new Date(),
         isAiGenerated: true,
         source: 'claude',
+        rateable: true, // the senior's diagnosis gets the single thumb
         retrieval: { dtcId: null, claudeQueries: [], usedUnverified: true },
       };
     } catch (err) {

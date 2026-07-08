@@ -8,12 +8,35 @@ import {
   deleteSession,
   insertTroubleCode,
   getTroubleCodesBySession,
+  getOutcomeBySession,
+  upsertOutcome,
 } from '@/data/datasources/storage.datasource';
 import { mapTroubleCodeToRow, mapRowToTroubleCode } from '@/data/mappers/dtc.mapper';
+import { faultClassFor } from '@/domain/services/fault-class';
 import { SessionNotFoundError } from '@/core/errors/obd.errors';
-import type { IReportRepository, ReportListItem } from '@/domain/repositories/i-report.repository';
+import type {
+  IReportRepository,
+  ReportListItem,
+  CaseOutcome,
+} from '@/domain/repositories/i-report.repository';
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
 import type { ChatMessage } from '@/domain/entities/chat-message';
+import type { TroubleCodeRow } from '@/data/db/schema';
+
+// Deterministic candidate causes for the outcome chips: the fault-class label
+// of each DTC, de-duplicated, order preserved. Empty when nothing maps.
+function causeChipsFor(dtcs: readonly TroubleCodeRow[]): string[] {
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const dtc of dtcs) {
+    const label = faultClassFor(dtc.code).label;
+    if (label != null && !seen.has(label)) {
+      seen.add(label);
+      chips.push(label);
+    }
+  }
+  return chips;
+}
 
 export class ReportRepositoryImpl implements IReportRepository {
   async save(session: DiagnosticSession): Promise<void> {
@@ -46,6 +69,7 @@ export class ReportRepositoryImpl implements IReportRepository {
     return Promise.all(
       rows.map(async (row) => {
         const dtcs = await getTroubleCodesBySession(row.id);
+        const outcomeRow = await getOutcomeBySession(row.id);
         const messageCount = (() => {
           try {
             const msgs = JSON.parse(row.messagesJson ?? '[]');
@@ -55,6 +79,11 @@ export class ReportRepositoryImpl implements IReportRepository {
           }
         })();
 
+        const outcome: CaseOutcome | null =
+          outcomeRow?.resolved != null
+            ? { resolved: outcomeRow.resolved, rootCause: outcomeRow.rootCause ?? null }
+            : null;
+
         return {
           id: row.id,
           vehicleId: row.vehicleId,
@@ -63,9 +92,23 @@ export class ReportRepositoryImpl implements IReportRepository {
           dtcCount: dtcs.length,
           messageCount,
           hasInterpretation: row.interpretation != null,
+          causeChips: causeChipsFor(dtcs),
+          outcome,
         } satisfies ReportListItem;
       }),
     );
+  }
+
+  async saveOutcome(sessionId: string, outcome: CaseOutcome): Promise<void> {
+    await upsertOutcome({
+      id: sessionId,          // one outcome per session
+      sessionId,
+      resolved: outcome.resolved,
+      rootCause: outcome.rootCause ?? undefined,
+      fix: undefined,
+      confirmed: outcome.resolved !== 'pending', // yes/no = a real answer
+      createdAt: new Date(),
+    });
   }
 
   async getSessionById(id: string): Promise<DiagnosticSession | null> {

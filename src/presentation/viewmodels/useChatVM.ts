@@ -77,7 +77,9 @@ export function useChatVM() {
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
-      if (result.retrieval) {
+      // Only diagnosis answers carry the thumb (rateable); questions, greetings
+      // and follow-up chatter don't — the case-level signal lives in Reports.
+      if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
         setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
       }
@@ -106,7 +108,9 @@ export function useChatVM() {
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
-      if (result.retrieval) {
+      // Only diagnosis answers carry the thumb (rateable); questions, greetings
+      // and follow-up chatter don't — the case-level signal lives in Reports.
+      if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
         setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
       }
@@ -140,7 +144,9 @@ export function useChatVM() {
       // On success the case moved to the senior phase → no offer; on failure
       // the use case keeps the offer alive so the user can retry.
       setSeniorOffer(result.seniorOffer === true);
-      if (result.retrieval) {
+      // Only diagnosis answers carry the thumb (rateable); questions, greetings
+      // and follow-up chatter don't — the case-level signal lives in Reports.
+      if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
         setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
       }
