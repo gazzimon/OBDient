@@ -126,23 +126,15 @@ export function briefReadiness(brief: DiagnosticBrief): BriefReadiness {
 }
 
 // ---------------------------------------------------------------------------
-// Senior prompt renderer — deterministic template over the brief.
-// English per PLAN-002 editor decision; the senior mirrors the owner's language.
+// Prompt renderers — deterministic templates over the brief.
+// English per PLAN-002 editor decision; both agents mirror the owner's language.
+// The case sections are shared: the same evidence feeds the local (junior)
+// preliminary diagnosis and, only on user opt-in, the ONE senior call.
 // ---------------------------------------------------------------------------
 
-export function renderBriefPrompt(brief: DiagnosticBrief): string {
-  const lines: string[] = [];
-
-  lines.push(
-    'You are a senior automotive diagnostic technician. A local intake agent on the',
-    "owner's phone collected the case below from a real vehicle over OBD-II.",
-    'Take over the diagnosis from here: give your best root-cause analysis, what to',
-    'check first (ordered, cheapest first), and ask the owner follow-up questions',
-    'when something is missing. Be concrete and practical. Reply in the language',
-    'the owner writes in.',
-    '',
-    '## Vehicle',
-  );
+// The case file body: vehicle, OBD evidence, owner-reported symptoms.
+function renderCaseSections(brief: DiagnosticBrief): string[] {
+  const lines: string[] = ['## Vehicle'];
 
   const { make, model, year, engine, fuelType, source } = brief.identity;
   const idParts = [make ?? 'unknown make', model ?? 'unknown model', year != null ? String(year) : 'unknown year'];
@@ -198,6 +190,23 @@ export function renderBriefPrompt(brief: DiagnosticBrief): string {
     lines.push(`- Owner notes (interview answers, verbatim): "${brief.userNotes.trim()}"`);
   }
 
+  return lines;
+}
+
+export function renderBriefPrompt(brief: DiagnosticBrief): string {
+  const lines: string[] = [];
+
+  lines.push(
+    'You are a senior automotive diagnostic technician. A local intake agent on the',
+    "owner's phone collected the case below from a real vehicle over OBD-II.",
+    'Take over the diagnosis from here: give your best root-cause analysis, what to',
+    'check first (ordered, cheapest first), and ask the owner follow-up questions',
+    'when something is missing. Be concrete and practical. Reply in the language',
+    'the owner writes in.',
+    '',
+  );
+  lines.push(...renderCaseSections(brief));
+
   lines.push(
     '',
     '## Your reply',
@@ -206,6 +215,32 @@ export function renderBriefPrompt(brief: DiagnosticBrief): string {
     '2) Ranked checks, cheapest first, that the owner can do or ask a shop for.',
     '3) One question back to the owner if something key is still missing.',
     "Reply in the language of the owner's words above.",
+  );
+
+  return lines.join('\n');
+}
+
+// Preliminary diagnosis prompt for the on-device junior (fase 2 of the token
+// pipeline): same deterministic case file, tuned for a small local model —
+// short, structured, and honest that a senior review is available on demand.
+export function renderLocalDiagnosisPrompt(brief: DiagnosticBrief, language: 'es' | 'en'): string {
+  const replyLanguage = language === 'es' ? 'Spanish' : 'English';
+  const lines: string[] = [];
+
+  lines.push(
+    'You are the on-device diagnostic assistant of OBDient. The intake below was',
+    'collected from a real vehicle over OBD-II. Give your PRELIMINARY diagnosis.',
+    '',
+  );
+  lines.push(...renderCaseSections(brief));
+  lines.push(
+    '',
+    '## Your reply',
+    'Be concise and practical. Structure it as:',
+    '1) Most likely cause (one line).',
+    '2) Up to 3 checks the owner can do, cheapest first.',
+    'Do not invent readings that are not in the case file.',
+    `Reply in ${replyLanguage}.`,
   );
 
   return lines.join('\n');

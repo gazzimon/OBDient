@@ -1,87 +1,28 @@
-// Multi-agent chat orchestrator.
+// Junior chat pipeline (CARpsy on-device).
 //
-// Routes each message to the right agent:
-//   - CARpsy (on-device) → diagnostic queries, DTCs, sensor faults
-//   - Claude API (cloud)  → general automotive questions
-//
-// Falls back to CARpsy if Claude is not configured or the network fails.
+// Token policy: every free-form chat turn — diagnostic or general — is
+// answered locally. Claude is never called from here; the ONLY Claude entry
+// points are the senior handoff/conversation in DiagnosticIntakeSessionUseCase,
+// and only after the user explicitly opts in ("consult the senior advisor").
+// The previous general→Claude routing and the per-turn background quality
+// eval were removed: they spent tokens on greetings and invisible audits.
 
-import { classifyQuery } from './query-router';
 import type { ChatWithQVACUseCase, ChatWithQVACInput } from './chat-with-qvac';
-import type { ClaudeAPIDataSource } from '@/data/datasources/claude-api.datasource';
-import type { ClaudeKnowledgeDataSource } from '@/data/datasources/claude-knowledge.datasource';
 import type { LLMInterpretationResult } from '@/domain/repositories/i-llm.repository';
 import type { ChatSource } from '@/domain/entities/chat-message';
 
 export interface MultiAgentChatResult extends LLMInterpretationResult {
   readonly source: ChatSource;
+  // Set by the intake session when a completed case is waiting for the user
+  // to opt into the senior (Claude) review. Drives the offer button in the UI.
+  readonly seniorOffer?: boolean;
 }
 
 export class MultiAgentChatUseCase {
-  constructor(
-    private readonly carpsy: ChatWithQVACUseCase,
-    private readonly claude: ClaudeAPIDataSource,
-    private readonly claudeKnowledge: ClaudeKnowledgeDataSource,
-  ) {}
+  constructor(private readonly carpsy: ChatWithQVACUseCase) {}
 
   async execute(input: ChatWithQVACInput): Promise<MultiAgentChatResult> {
-    const lastUserTurn = [...input.history].reverse().find((t) => t.role === 'user');
-    const userText = lastUserTurn?.content ?? '';
-    const queryType = classifyQuery(userText, input.troubleCodes.length > 0);
-
-    // Always use CARpsy when diagnostic, or when Claude isn't configured
-    if (queryType === 'diagnostic' || !this.claude.isConfigured()) {
-      const result = await this.carpsy.execute(input);
-
-      // Fire quality evaluation in background (non-blocking) when Claude is available
-      if (this.claude.isConfigured() && userText) {
-        const vehicleCtx = this.buildVehicleCtx(input);
-        this.runQualityEval(vehicleCtx, userText, result.text).catch(() => {});
-      }
-
-      return { ...result, source: 'carpsy' };
-    }
-
-    // General question → Claude API
-    const vehicleCtx = this.buildVehicleCtx(input);
-    try {
-      const text = await this.claude.answerGeneral(vehicleCtx, userText);
-
-      // Persist Claude's answer in SHIMI knowledge for offline reuse
-      await this.claudeKnowledge.store(userText, text);
-
-      // A direct Claude answer is unverified single-source; 👍 confirms this entry.
-      return {
-        text,
-        generatedAt: new Date(),
-        isAiGenerated: true,
-        source: 'claude',
-        retrieval: { dtcId: null, claudeQueries: [userText], usedUnverified: true },
-      };
-    } catch (err) {
-      console.warn('[MultiAgent] Claude failed, falling back to CARpsy:', err);
-      const result = await this.carpsy.execute(input);
-      return { ...result, source: 'carpsy' };
-    }
-  }
-
-  private buildVehicleCtx(input: ChatWithQVACInput): string {
-    if (!input.vehicle) return 'Unknown vehicle';
-    const { make, model, year } = input.vehicle;
-    return [make, model, year != null ? String(year) : ''].filter(Boolean).join(' ');
-  }
-
-  private async runQualityEval(
-    vehicleCtx: string,
-    question: string,
-    carpsynAnswer: string,
-  ): Promise<void> {
-    const evaluation = await this.claude.evaluateResponse(vehicleCtx, question, carpsynAnswer);
-    if (!evaluation.isAcceptable && evaluation.correction) {
-      await this.claudeKnowledge.store(question, evaluation.correction);
-      console.log(`[QualityEval] Score ${evaluation.score}/5 — correction stored in SHIMI`);
-    } else {
-      console.log(`[QualityEval] Score ${evaluation.score}/5 — response acceptable`);
-    }
+    const result = await this.carpsy.execute(input);
+    return { ...result, source: 'carpsy' };
   }
 }

@@ -1,7 +1,15 @@
-// Session state machine for the ADR-0009 pipeline:
+// Session state machine for the ADR-0009 pipeline, token-budget revision:
 //
-//   intake (junior interviews) → handoff (deterministic brief, ONE senior
-//   call) → senior conducts to the end · every step logged append-only.
+//   fase 1 — intake: deterministic ladder, template questions (0 tokens,
+//     0 latency; the optional InterviewerPort re-phrasing is off by default).
+//   fase 2 — local diagnosis: when the brief is ready, the on-device junior
+//     (QVAC) issues a PRELIMINARY diagnosis from the same deterministic brief.
+//     No cloud call. The session then waits in 'awaiting_senior'.
+//   fase 3 — senior opt-in: Claude is called ONLY when the user explicitly
+//     requests the senior review (requestSenior). One well-fed call carries
+//     the brief + the junior hypothesis; the senior conducts from there.
+//
+//   Every step logged append-only.
 //
 // Intake v2 — "catalog, never discard":
 //   - Question ladder: identity(+mileage+fuel) → OBD → open symptoms (hinted
@@ -22,7 +30,12 @@ import type { TroubleCode } from '@/domain/entities/trouble-code';
 import { parseVehicleIdentity, ParsedVehicleIdentity } from '@/domain/services/vehicle-identity-parser';
 import { matchSymptomsDetailed } from '@/domain/services/symptom-matcher';
 import { faultClassClosure } from '@/domain/services/fault-class';
-import { buildBrief, briefReadiness, renderBriefPrompt } from '@/domain/services/brief-assembler';
+import {
+  buildBrief,
+  briefReadiness,
+  renderBriefPrompt,
+  renderLocalDiagnosisPrompt,
+} from '@/domain/services/brief-assembler';
 import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontology';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 
@@ -66,7 +79,9 @@ export interface JuniorChatPort {
 
 // ─── Session state ───────────────────────────────────────────────────────────
 
-type Phase = 'intake' | 'senior' | 'local_only';
+// awaiting_senior: the junior already diagnosed from the completed brief; the
+// user can keep chatting locally or explicitly summon the senior (fase 3).
+type Phase = 'intake' | 'awaiting_senior' | 'senior' | 'local_only';
 type Lang = 'es' | 'en';
 
 interface CaseState {
@@ -82,6 +97,7 @@ interface CaseState {
   symptomsProbeAsked: boolean;
   sensesProbeAsked: boolean;
   conditionsAsked: boolean;
+  juniorDiagnosis: string | null;
   seniorHistory: { role: 'user' | 'assistant'; content: string }[];
 }
 
@@ -104,6 +120,7 @@ function freshCase(): CaseState {
     symptomsProbeAsked: false,
     sensesProbeAsked: false,
     conditionsAsked: false,
+    juniorDiagnosis: null,
     seniorHistory: [],
   };
 }
@@ -332,8 +349,18 @@ function buildBriefing(
   return lines.join('\n');
 }
 
-function localResult(text: string, isAiGenerated: boolean): MultiAgentChatResult {
-  return { text, generatedAt: new Date(), isAiGenerated, source: 'carpsy' };
+function localResult(
+  text: string,
+  isAiGenerated: boolean,
+  seniorOffer = false,
+): MultiAgentChatResult {
+  return {
+    text,
+    generatedAt: new Date(),
+    isAiGenerated,
+    source: 'carpsy',
+    ...(seniorOffer ? { seniorOffer: true } : {}),
+  };
 }
 
 // ─── Use case ────────────────────────────────────────────────────────────────
@@ -363,23 +390,24 @@ export class DiagnosticIntakeSessionUseCase {
     if (state.phase === 'local_only') {
       return this.juniorTurn(sessionId, input);
     }
+    if (state.phase === 'awaiting_senior') {
+      // Fase 2 done: the junior diagnosed. Follow-up chat stays local; new
+      // details keep enriching the case so a later senior call gets them.
+      this.absorb(sessionId, state, userText);
+      const result = await this.juniorTurn(sessionId, input);
+      return this.senior.isConfigured() ? { ...result, seniorOffer: true } : result;
+    }
 
-    // ── Intake ──
+    // ── Intake (fase 1 — deterministic, zero tokens) ──
     const isDiagnostic = classifyQuery(userText, input.troubleCodes.length > 0) === 'diagnostic';
     const intakeStarted = existing != null;
     if (!isDiagnostic && !intakeStarted) {
-      // General chit-chat outside a diagnostic case: previous behavior, no state
+      // General chit-chat outside a diagnostic case: local junior, no state
       return this.juniorTurn(sessionId, input);
     }
 
-    // No senior configured → nothing to refine a brief for. Skip the interview
-    // and let the local junior pipeline handle the case (previous behavior).
-    if (!this.senior.isConfigured()) {
-      state.phase = 'local_only';
-      this.cases.set(sessionId, state);
-      return this.juniorTurn(sessionId, input);
-    }
-
+    // The interview runs even without a senior configured: the brief also
+    // feeds the junior's local diagnosis (fase 2), which works offline.
     this.cases.set(sessionId, state);
     this.absorb(sessionId, state, userText);
 
@@ -407,14 +435,14 @@ export class DiagnosticIntakeSessionUseCase {
       : probesExhausted;
 
     if (hard.ready && interviewDone) {
-      return this.handoff(sessionId, state, input, brief);
+      return this.localDiagnosis(sessionId, state, input, brief);
     }
 
     if (state.questionsAsked >= MAX_INTAKE_QUESTIONS) {
-      // The owner won't give more. If the hard G0 holds, a decent call beats
-      // none — hand off with what exists; otherwise degrade to the junior.
+      // The owner won't give more. If the hard G0 holds, a decent local call
+      // beats none — diagnose with what exists; otherwise degrade to the junior.
       if (hard.ready) {
-        return this.handoff(sessionId, state, input, brief);
+        return this.localDiagnosis(sessionId, state, input, brief);
       }
       state.phase = 'local_only';
       return this.juniorTurn(sessionId, input);
@@ -496,14 +524,74 @@ export class DiagnosticIntakeSessionUseCase {
     if (state.notes.length < MAX_NOTES) state.notes.push(userText);
   }
 
-  // ── The one good call (ADR-0009 §3) ──
-  private async handoff(
+  // ── Fase 2: preliminary diagnosis by the on-device junior (0 cloud tokens) ──
+  private async localDiagnosis(
     sessionId: string,
     state: CaseState,
     input: ChatWithQVACInput,
     brief: DiagnosticBrief,
   ): Promise<MultiAgentChatResult> {
-    const prompt = renderBriefPrompt(brief);
+    state.phase = 'awaiting_senior';
+    const prompt = renderLocalDiagnosisPrompt(brief, state.language);
+    try {
+      const result = await this.junior.execute({
+        ...input,
+        history: [{ role: 'user', content: prompt }],
+      });
+      state.juniorDiagnosis = result.text;
+      this.caseLog.logTurn(sessionId, 'junior', result.text);
+      return this.senior.isConfigured() ? { ...result, seniorOffer: true } : result;
+    } catch (err) {
+      console.warn('[IntakeSession] local diagnosis failed:', err);
+      const msg = state.language === 'es'
+        ? 'No pude generar el diagnóstico local. Podés consultar al asesor senior o intentar de nuevo.'
+        : 'I could not generate the local diagnosis. You can consult the senior advisor or try again.';
+      this.caseLog.logTurn(sessionId, 'junior', msg);
+      return localResult(msg, false, this.senior.isConfigured());
+    }
+  }
+
+  // ── Fase 3: the one good senior call, ONLY on explicit user request ──
+  // Rebuilds the brief from the current state (anything said after the local
+  // diagnosis travels too) and appends the junior hypothesis for the senior
+  // to confirm or correct.
+  async requestSenior(sessionId: string, input: ChatWithQVACInput): Promise<MultiAgentChatResult> {
+    const state = this.cases.get(sessionId);
+    if (state == null || state.phase !== 'awaiting_senior') {
+      return localResult('The senior review is only available after a completed local diagnosis.', false);
+    }
+    if (!this.senior.isConfigured()) {
+      const msg = state.language === 'es'
+        ? 'El asesor senior no está configurado. Agregá tu clave de Claude en Settings.'
+        : 'The senior advisor is not configured. Add your Claude API key in Settings.';
+      return localResult(msg, false);
+    }
+
+    this.caseLog.logTurn(sessionId, 'user', '[owner requested the senior review]');
+
+    const brief = buildBrief({
+      vehicle: input.vehicle,
+      userIdentity: state.identity,
+      mileageKm: input.mileage,
+      troubleCodes: input.troubleCodes,
+      parameters: input.parameters,
+      symptomIds: state.symptomIds,
+      describedSymptoms: state.describedSymptoms,
+      deniedSymptomIds: state.deniedSymptomIds,
+      userNotes: state.notes.join('\n'),
+      now: Date.now(),
+    });
+
+    let prompt = renderBriefPrompt(brief);
+    if (state.juniorDiagnosis != null) {
+      prompt += [
+        '',
+        '',
+        '## Local assistant hypothesis (verify or correct)',
+        'A small on-device model gave the owner this preliminary read:',
+        `"${state.juniorDiagnosis}"`,
+      ].join('\n');
+    }
     this.caseLog.logBrief(sessionId, brief, prompt);
 
     try {
@@ -520,9 +608,12 @@ export class DiagnosticIntakeSessionUseCase {
         retrieval: { dtcId: null, claudeQueries: [], usedUnverified: true },
       };
     } catch (err) {
-      console.warn('[IntakeSession] senior handoff failed, degrading to local:', err);
-      state.phase = 'local_only';
-      return this.juniorTurn(sessionId, input);
+      console.warn('[IntakeSession] senior request failed, staying local:', err);
+      const msg = state.language === 'es'
+        ? 'No pude contactar al asesor senior — revisá tu conexión e intentá de nuevo.'
+        : 'I could not reach the senior advisor — check your connection and try again.';
+      this.caseLog.logTurn(sessionId, 'junior', msg);
+      return localResult(msg, false, true); // the offer stays available
     }
   }
 

@@ -3,7 +3,6 @@
 
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
 import { claudeAPI } from '@/data/datasources/claude-api.datasource';
-import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OBDRepositoryImpl } from '@/data/repositories/obd.repository.impl';
 import { LLMRepositoryImpl } from '@/data/repositories/llm.repository.impl';
@@ -17,7 +16,6 @@ import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
 import { DiagnosticIntakeSessionUseCase } from '@/domain/usecases/diagnostic-intake-session';
 import { caseLog } from '@/data/datasources/case-log.datasource';
-import { qvacInterviewer } from '@/data/datasources/interviewer.adapter';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 // Initialize Hypercore network conditionally based on persisted user preference.
@@ -32,7 +30,7 @@ const obdRepo    = new OBDRepositoryImpl();
 const llmRepo    = new LLMRepositoryImpl();
 const reportRepo = new ReportRepositoryImpl();
 const carpsy     = new ChatWithQVACUseCase(llmRepo);
-const multiAgent = new MultiAgentChatUseCase(carpsy, claudeAPI, claudeKnowledge);
+const multiAgent = new MultiAgentChatUseCase(carpsy);
 
 // ADR-0009 senior port over the Claude datasource
 const seniorAgent = {
@@ -54,12 +52,13 @@ export const container = {
   interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
   chatWithQVAC: carpsy,
   multiAgentChat: multiAgent,
-  // ADR-0009 session pipeline: intake (junior) → brief → senior conversation
+  // ADR-0009 pipeline, token-budget revision: deterministic intake (templates
+  // only — no InterviewerPort, so questions are instant and free) → junior
+  // diagnosis (QVAC, offline) → senior conversation ONLY on user opt-in.
   diagnosticSession: new DiagnosticIntakeSessionUseCase(
     multiAgent,
     seniorAgent,
     caseLog,
-    qvacInterviewer,
   ),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices

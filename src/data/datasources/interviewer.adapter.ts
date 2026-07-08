@@ -3,6 +3,11 @@
 // block; the local model only picks the WORDS — warmly, persistently, and in
 // the owner's language. Any failure degrades to the use case's bilingual
 // templates, so this path may fail freely.
+//
+// CURRENTLY UNWIRED (token-budget revision): the container passes no
+// interviewer, so intake questions ship straight from the bilingual templates
+// (0 latency, 0 tokens). Re-wire this adapter in container.ts to bring back
+// LLM-phrased questions.
 
 import type { InterviewerPort } from '@/domain/usecases/diagnostic-intake-session';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';

@@ -1,7 +1,8 @@
-// Tests for the ADR-0009 session state machine, intake v2:
-// ladder interview (identity → OBD → symptoms → senses → conditions),
-// "catalog never discard" (user-described + denied symptoms), bilingual
-// template fallback, and honest degradation at every failure point.
+// Tests for the ADR-0009 session state machine, token-budget revision:
+// fase 1 — deterministic ladder interview (identity → OBD → symptoms →
+// senses → conditions), bilingual templates, "catalog never discard";
+// fase 2 — local (junior) diagnosis from the completed brief, NO cloud call;
+// fase 3 — senior (Claude) reached ONLY via explicit requestSenior().
 // All ports are fakes — no network, no DB, no model.
 
 import {
@@ -60,6 +61,11 @@ function fakeJunior(): JuniorChatPort & { calls: ChatWithQVACInput[] } {
   };
 }
 
+// The prompt the junior received on call #i (the brief travels as history[0]).
+function juniorPrompt(junior: ReturnType<typeof fakeJunior>, i = 0): string {
+  return junior.calls[i]?.history[0]?.content ?? '';
+}
+
 function fakeSenior(configured = true): SeniorAgentPort & {
   calls: { role: string; content: string }[][];
   failNext: { value: boolean };
@@ -99,7 +105,7 @@ function fakeLog(): CaseLogPort & {
 const fullCase = (text: string, codes: TroubleCode[] = [dtc('P0302')]) =>
   input(text, { vehicle: vehicle(), troubleCodes: codes, parameters: { RPM: param('RPM', 850) } });
 
-describe('intake phase — ladder', () => {
+describe('intake phase — ladder (fase 1, deterministic)', () => {
   it('passes general chat through to the junior without starting a case', async () => {
     const junior = fakeJunior();
     const senior = fakeSenior();
@@ -125,20 +131,43 @@ describe('intake phase — ladder', () => {
     expect(log.turns.map((t) => t.role)).toEqual(['user', 'junior']);
   });
 
-  it('full interview: identity → conditions → handoff with the enriched brief', async () => {
+  it('full interview ends in a LOCAL diagnosis with the senior offer — Claude is NOT called', async () => {
+    const junior = fakeJunior();
     const senior = fakeSenior();
-    const log = fakeLog();
-    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
     const codes = [dtc('P0335')];
 
     // Symptom arrives in msg 1 ("no arranca"); identity is asked
     await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
     // Identity answered (mileage + fuel included) → conditions question
     const q2 = await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
-    expect(q2.source).toBe('carpsy');
     expect(q2.text).toContain('desde cuándo');
-    // Conditions answered → the ONE senior call
+    // Conditions answered → fase 2: junior diagnosis from the brief
     const res = await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
+    expect(senior.calls).toHaveLength(0); // no auto-handoff, ever
+
+    // The junior got the deterministic case file, not the raw chat
+    const prompt = juniorPrompt(junior);
+    expect(prompt).toContain('PRELIMINARY');
+    expect(prompt).toContain('Chevrolet Corsa 2008');
+    expect(prompt).toContain('P0335');
+    expect(prompt).toContain('Reply in Spanish');
+  });
+
+  it('requestSenior makes the ONE senior call: brief + interview answers + junior hypothesis', async () => {
+    const junior = fakeJunior();
+    const senior = fakeSenior();
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, log);
+    const codes = [dtc('P0335')];
+
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+
+    const res = await uc.requestSenior('s1', input('', { troubleCodes: codes }));
     expect(res.source).toBe('claude');
     expect(senior.calls).toHaveLength(1);
 
@@ -149,12 +178,14 @@ describe('intake phase — ladder', () => {
     expect(prompt).toContain('P0335');
     expect(prompt).toContain('Engine does not start');
     expect(prompt).toContain('desde hace una semana'); // interview answers travel
+    expect(prompt).toContain('junior reply');           // junior hypothesis travels
     expect(log.briefs).toHaveLength(1);
   });
 
   it('VIN + DTCs still get interviewed: symptom probe (hinted) then conditions', async () => {
+    const junior = fakeJunior();
     const senior = fakeSenior();
-    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
 
     const q1 = await uc.execute('s1', fullCase('diagnose my codes'));
     expect(senior.calls).toHaveLength(0);
@@ -164,7 +195,10 @@ describe('intake phase — ladder', () => {
     expect(q2.text).toContain('desde cuándo'); // language followed the owner
 
     const res = await uc.execute('s1', fullCase('desde ayer, en frio'));
-    expect(res.source).toBe('claude');
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
+
+    await uc.requestSenior('s1', fullCase(''));
     const prompt = senior.calls[0]?.[0]?.content ?? '';
     expect(prompt).toContain('Rough / shaky idle');
     expect(prompt).toContain('Check engine light FLASHING');
@@ -177,7 +211,8 @@ describe('intake phase — ladder', () => {
     const q1 = await uc.execute('s1', fullCase('mi auto tiembla en ralenti'));
     expect(q1.text).toContain('desde cuándo');
     const res = await uc.execute('s1', fullCase('desde hace una semana, en frio'));
-    expect(res.source).toBe('claude');
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
   });
 
   it('catalogs substantive descriptions that match no taxonomy entry (never discards)', async () => {
@@ -189,8 +224,8 @@ describe('intake phase — ladder', () => {
     await uc.execute('s1', fullCase('se sacude al acelerar en subida')); // no keyword match
     expect(log.candidates).toEqual(['se sacude al acelerar en subida']);
 
-    const res = await uc.execute('s1', fullCase('desde ayer'));       // conditions answered
-    expect(res.source).toBe('claude');
+    await uc.execute('s1', fullCase('desde ayer'));                   // conditions answered
+    await uc.requestSenior('s1', fullCase(''));
     const prompt = senior.calls[0]?.[0]?.content ?? '';
     expect(prompt).toContain('se sacude al acelerar en subida'); // user-described travels
   });
@@ -201,15 +236,18 @@ describe('intake phase — ladder', () => {
 
     await uc.execute('s1', fullCase('tiembla en ralenti pero no tira humo azul'));
     const res = await uc.execute('s1', fullCase('desde hace un mes, siempre'));
-    expect(res.source).toBe('claude');
+    expect(res.seniorOffer).toBe(true);
+
+    await uc.requestSenior('s1', fullCase(''));
     const prompt = senior.calls[0]?.[0]?.content ?? '';
     expect(prompt).toContain('DENIED');
     expect(prompt).toContain('Blue smoke');
   });
 
-  it('an owner who cannot describe symptoms exhausts both probes, then the senior gets the case', async () => {
+  it('an owner who cannot describe symptoms exhausts both probes, then the junior diagnoses', async () => {
+    const junior = fakeJunior();
     const senior = fakeSenior();
-    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
     const vague = () => fullCase('anda raro pero no se explicar');
 
     const q1 = await uc.execute('s1', vague()); // open symptoms probe
@@ -217,7 +255,10 @@ describe('intake phase — ladder', () => {
     expect(q1.source).toBe('carpsy');
     expect(q2.source).toBe('carpsy');
     const res = await uc.execute('s1', vague()); // probes exhausted, G0 holds
-    expect(res.source).toBe('claude');
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
+    expect(senior.calls).toHaveLength(0);
+    expect(juniorPrompt(junior)).toContain('PRELIMINARY');
   });
 
   it('gives up after the question cap when the hard G0 never completes', async () => {
@@ -240,6 +281,7 @@ describe('intake phase — ladder', () => {
     await uc.execute('s1', fullCase('mi vin es 3G1SF21649S123456, revisa los codigos'));
     await uc.execute('s1', fullCase('tiembla en ralenti'));
     await uc.execute('s1', fullCase('desde ayer'));
+    await uc.requestSenior('s1', fullCase(''));
 
     expect(senior.calls).toHaveLength(1);
     const prompt = senior.calls[0]?.[0]?.content ?? '';
@@ -247,26 +289,87 @@ describe('intake phase — ladder', () => {
     expect(prompt).not.toContain('3G1SF21649S123456');
   });
 
-  it('degrades to the junior when the senior is not configured (no pointless interview)', async () => {
+  it('without a senior configured the interview still runs and the junior diagnoses — no offer', async () => {
     const junior = fakeJunior();
-    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(false), fakeLog());
+    const senior = fakeSenior(false);
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
 
-    const res = await uc.execute('s1', fullCase('diagnose'));
+    const q1 = await uc.execute('s1', fullCase('tiembla en ralenti'));
+    expect(q1.text).toContain('desde cuándo'); // interview happens offline too
+    const res = await uc.execute('s1', fullCase('desde ayer'));
     expect(res.source).toBe('carpsy');
-    expect(junior.calls).toHaveLength(1);
+    expect(res.seniorOffer).toBeUndefined();
+
+    const denied = await uc.requestSenior('s1', fullCase(''));
+    expect(denied.source).toBe('carpsy');
+    expect(senior.calls).toHaveLength(0);
   });
 });
 
-describe('senior phase', () => {
+describe('awaiting_senior phase (fase 2 → fase 3 boundary)', () => {
+  async function toAwaiting(senior: ReturnType<typeof fakeSenior>, junior = fakeJunior(), log = fakeLog()) {
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, log);
+    await uc.execute('s1', fullCase('diagnose'));                 // → symptom probe
+    await uc.execute('s1', fullCase('tiembla en ralenti'));       // → conditions
+    await uc.execute('s1', fullCase('desde ayer, en frio'));      // → junior diagnosis
+    return uc;
+  }
+
+  it('follow-up chat stays local and keeps offering the senior', async () => {
+    const senior = fakeSenior();
+    const junior = fakeJunior();
+    const uc = await toAwaiting(senior, junior);
+
+    const res = await uc.execute('s1', fullCase('y puede ser la bujia?'));
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
+    expect(senior.calls).toHaveLength(0);
+  });
+
+  it('details added after the local diagnosis reach the senior brief', async () => {
+    const senior = fakeSenior();
+    const uc = await toAwaiting(senior);
+
+    await uc.execute('s1', fullCase('ah y tira humo negro'));
+    await uc.requestSenior('s1', fullCase(''));
+    const prompt = senior.calls[0]?.[0]?.content ?? '';
+    expect(prompt).toContain('Black smoke');
+  });
+
+  it('a failed senior request keeps the offer alive (retryable)', async () => {
+    const senior = fakeSenior();
+    const uc = await toAwaiting(senior);
+
+    senior.failNext.value = true;
+    const res = await uc.requestSenior('s1', fullCase(''));
+    expect(res.source).toBe('carpsy');
+    expect(res.seniorOffer).toBe(true);
+
+    senior.failNext.value = false;
+    const res2 = await uc.requestSenior('s1', fullCase(''));
+    expect(res2.source).toBe('claude');
+  });
+
+  it('requestSenior without a completed case is a no-op guard', async () => {
+    const senior = fakeSenior();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog());
+    const res = await uc.requestSenior('nope', fullCase(''));
+    expect(res.source).toBe('carpsy');
+    expect(senior.calls).toHaveLength(0);
+  });
+});
+
+describe('senior phase (after opt-in)', () => {
   async function toSeniorPhase(senior: ReturnType<typeof fakeSenior>, log = fakeLog()) {
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
     await uc.execute('s1', fullCase('diagnose'));                 // → symptom probe
     await uc.execute('s1', fullCase('tiembla en ralenti'));       // → conditions
-    await uc.execute('s1', fullCase('desde ayer, en frio'));      // → handoff
+    await uc.execute('s1', fullCase('desde ayer, en frio'));      // → junior diagnosis
+    await uc.requestSenior('s1', fullCase(''));                   // → fase 3 opt-in
     return uc;
   }
 
-  it('after handoff the senior conducts the conversation with full history', async () => {
+  it('after the opt-in the senior conducts the conversation with full history', async () => {
     const senior = fakeSenior();
     const uc = await toSeniorPhase(senior);
 
@@ -294,18 +397,24 @@ describe('senior phase', () => {
     expect(res2.source).toBe('claude');
   });
 
-  it('every turn lands in the case log (user, junior interview, senior)', async () => {
+  it('every turn lands in the case log (user, junior interview + diagnosis, senior)', async () => {
     const senior = fakeSenior();
     const log = fakeLog();
     const uc = await toSeniorPhase(senior, log);
     await uc.execute('s1', input('gracias'));
 
     const roles = log.turns.map((t) => t.role);
-    expect(roles).toEqual(['user', 'junior', 'user', 'junior', 'user', 'senior', 'user', 'senior']);
+    expect(roles).toEqual([
+      'user', 'junior',   // symptom probe
+      'user', 'junior',   // conditions question
+      'user', 'junior',   // local diagnosis
+      'user', 'senior',   // opt-in marker + senior reply
+      'user', 'senior',   // follow-up
+    ]);
   });
 });
 
-describe('interviewer (LLM question phrasing over the briefing)', () => {
+describe('interviewer (optional LLM question phrasing over the briefing)', () => {
   it('uses the LLM question when it passes the sanity floor', async () => {
     const interviewer: InterviewerPort = {
       phraseQuestion: async () => '¿Qué marca, modelo y año es tu vehículo?',

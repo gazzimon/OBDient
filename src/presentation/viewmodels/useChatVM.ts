@@ -22,6 +22,9 @@ export interface MessageFeedback {
 export function useChatVM() {
   const [isResponding, setIsResponding] = useState(false);
   const [chatError, setChatError]       = useState<string | null>(null);
+  // True while the case sits in 'awaiting_senior': the local diagnosis is done
+  // and the user may summon the senior (Claude) — the ONLY path that spends tokens.
+  const [seniorOffer, setSeniorOffer]   = useState(false);
   // messageId → feedback. Ephemeral (session-scoped); confidence changes persist.
   const [feedback, setFeedback] = useState<Record<string, MessageFeedback>>({});
 
@@ -73,6 +76,7 @@ export function useChatVM() {
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
+      setSeniorOffer(result.seniorOffer === true);
       if (result.retrieval) {
         const prov = result.retrieval;
         setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
@@ -101,6 +105,7 @@ export function useChatVM() {
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source);
       addChatMessage(assistantMsg);
+      setSeniorOffer(result.seniorOffer === true);
       if (result.retrieval) {
         const prov = result.retrieval;
         setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
@@ -111,6 +116,40 @@ export function useChatVM() {
       setIsResponding(false);
     }
   }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage, ensureSession]);
+
+  // Fase 3 opt-in: the user taps "senior advisor" — the ONE Claude call with
+  // the deterministic brief + junior hypothesis. Everything before this is free.
+  const requestSeniorReview = useCallback(async () => {
+    if (isResponding) return;
+    const sessionId = useSessionStore.getState().activeSession?.id;
+    if (sessionId == null) return;
+    setChatError(null);
+    setIsResponding(true);
+    try {
+      const history: ChatTurn[] = messages.map((m) => ({ role: m.role, content: m.content }));
+      const result = await container.diagnosticSession.requestSenior(sessionId, {
+        vehicle,
+        mileage,
+        troubleCodes: codes,
+        parameters,
+        history,
+      });
+      const source: ChatSource = 'source' in result ? result.source : 'carpsy';
+      const assistantMsg = createChatMessage('assistant', result.text, source);
+      addChatMessage(assistantMsg);
+      // On success the case moved to the senior phase → no offer; on failure
+      // the use case keeps the offer alive so the user can retry.
+      setSeniorOffer(result.seniorOffer === true);
+      if (result.retrieval) {
+        const prov = result.retrieval;
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+      }
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : 'Senior review failed');
+    } finally {
+      setIsResponding(false);
+    }
+  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage]);
 
   // Human feedback 👍/👎 — moves confidence of the knowledge the response used.
   // 👍 raises the SHIMI node (verified) and confirms any Claude-origin entries used.
@@ -138,8 +177,11 @@ export function useChatVM() {
     isResponding,
     chatError,
     feedback,
+    // A "+ new diagnosis" reset empties the messages; hide any stale offer.
+    seniorOffer: seniorOffer && messages.length > 0,
     sendMessage,
     sendInitialAssessment,
+    requestSeniorReview,
     rateMessage,
   } as const;
 }

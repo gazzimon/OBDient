@@ -43,7 +43,10 @@ export default function DiagnosticsScreen() {
   const addChatMessage    = useSessionStore((s) => s.addChatMessage);
 
   const { codes, loadState, errorMessage, readCodes } = useDiagnosticsVM();
-  const { messages, isResponding, chatError, feedback, sendMessage, sendInitialAssessment, rateMessage } = useChatVM();
+  const {
+    messages, isResponding, chatError, feedback, seniorOffer,
+    sendMessage, sendInitialAssessment, requestSeniorReview, rateMessage,
+  } = useChatVM();
 
   const [mileageText, setMileageText] = useState('');
   const [inputText, setInputText]     = useState('');
@@ -271,6 +274,21 @@ export default function DiagnosticsScreen() {
             <Text className="text-brand-red font-mono text-xs text-center mb-3">{chatError}</Text>
           )}
         </ScrollView>
+
+        {/* Senior opt-in — the ONLY action that reaches Claude (fase 3) */}
+        {seniorOffer && !isResponding && (
+          <View className="px-4 pb-2">
+            <Pressable
+              onPress={() => void requestSeniorReview()}
+              className="flex-row items-center justify-center gap-2 border border-[#7C6AFE] rounded-xl px-4 py-2.5 active:opacity-70"
+            >
+              <MaterialCommunityIcons name="account-tie" size={16} color="#7C6AFE" />
+              <Text className="font-mono text-sm" style={{ color: '#7C6AFE' }}>
+                Consult senior advisor (Claude)
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Input bar — always enabled; "+" starts a new diagnosis */}
         <View className="px-4 pb-4 pt-2 flex-row items-end gap-3 border-t border-brand-border">

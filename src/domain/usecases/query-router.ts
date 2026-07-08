@@ -1,10 +1,11 @@
 // Classifies a user message as 'diagnostic' or 'general'.
 //
-// 'diagnostic' → CARpsy + SHIMI/SKOS/RAG (on-device, private, no internet needed)
-// 'general'    → Claude API (cloud, requires API key, no sensor data sent)
+// 'diagnostic' → starts/continues the intake case (DiagnosticIntakeSession)
+// 'general'    → plain local chat (CARpsy), no case state
 //
-// Rule: any hint of DTCs, sensor names, or fault diagnosis = diagnostic.
-// Everything else (explanations, how-things-work, maintenance) = general.
+// Both paths run on-device; Claude is only reached later, when the user
+// explicitly requests the senior review. Rule: any hint of DTCs, sensor
+// names, or fault diagnosis = diagnostic. Everything else = general.
 
 export type QueryType = 'diagnostic' | 'general';
 
