@@ -23,7 +23,6 @@
 //   - If the interviewer LLM drifts into diagnosing, its output is logged as a
 //     junior hypothesis (not shown) and the template question ships instead.
 
-import { classifyQuery } from './query-router';
 import type { ChatWithQVACInput } from './chat-with-qvac';
 import type { MultiAgentChatResult } from './multi-agent-chat';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
@@ -134,6 +133,9 @@ function freshCase(): CaseState {
 const ES_WORDS = new Set([
   'que', 'pero', 'tiene', 'esta', 'anda', 'los', 'las', 'se', 'mi', 'cuando', 'desde',
   'hace', 'muy', 'es', 'una', 'y', 'como', 'con',
+  // Greetings/openers carry language even when the message names no symptom —
+  // a bare "Hola" must land in Spanish, not the 'en' default (freshCase).
+  'hola', 'buenas', 'buenos', 'gracias', 'necesito', 'tengo', 'quiero', 'ayuda', 'ayudame',
   // Symptom vocabulary is a strong language signal on short messages
   'arranca', 'enciende', 'tira', 'ruido', 'olor', 'humo', 'tiembla', 'apaga',
   'frio', 'caliente', 'ralenti', 'consume', 'pierde', 'recalienta',
@@ -393,13 +395,13 @@ export class DiagnosticIntakeSessionUseCase {
     }
 
     // ── Intake (fase 1 — deterministic, zero tokens) ──
-    const isDiagnostic = classifyQuery(userText, input.troubleCodes.length > 0) === 'diagnostic';
-    const intakeStarted = existing != null;
-    if (!isDiagnostic && !intakeStarted) {
-      // General chit-chat outside a diagnostic case: local junior, no state
-      return this.juniorTurn(sessionId, input);
-    }
-
+    // The Diagnosis chat IS the intake: every message enters the deterministic
+    // ladder from the very first turn — greetings included. Nothing is handed
+    // to the free-form on-device model here, which would hallucinate a diagnosis
+    // and drift out of the owner's language before the case even exists (the
+    // "it answers before interviewing" regression). The tiny model only speaks
+    // in fase 2, fed the structured brief.
+    //
     // The interview runs even without a senior configured: the brief also
     // feeds the junior's local diagnosis (fase 2), which works offline.
     this.cases.set(sessionId, state);

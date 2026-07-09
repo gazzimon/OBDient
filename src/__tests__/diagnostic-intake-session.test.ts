@@ -110,14 +110,18 @@ const fullCase = (text: string, codes: TroubleCode[] = [dtc('P0302')]) =>
   });
 
 describe('intake phase — ladder (fase 1, deterministic)', () => {
-  it('passes general chat through to the junior without starting a case', async () => {
+  it('intake owns the diagnosis chat from the first message — even a bare greeting', async () => {
     const junior = fakeJunior();
     const senior = fakeSenior();
     const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
 
-    const res = await uc.execute('s1', input('hola, como estas?'));
-    expect(res.text).toBe('junior reply');
-    expect(junior.calls).toHaveLength(1);
+    // A greeting with no vehicle/DTCs must NOT reach the free-form model (which
+    // would hallucinate a diagnosis in the wrong language). The deterministic
+    // ladder answers instantly with the Spanish identity question.
+    const res = await uc.execute('s1', input('hola'));
+    expect(res.source).toBe('carpsy');
+    expect(res.text).toContain('marca, modelo, año'); // Spanish identity template
+    expect(junior.calls).toHaveLength(0);             // the tiny model never sees it
     expect(senior.calls).toHaveLength(0);
   });
 

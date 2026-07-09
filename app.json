@@ -9,7 +9,11 @@
     "scheme": "obdient",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.obdient.app"
+      "bundleIdentifier": "com.obdient.app",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow OBDient to use the microphone for voice commands."
+      }
     },
     "android": {
       "package": "com.obdient.app",
@@ -33,7 +37,12 @@
       ]
     },
     "plugins": [
-      ["expo-router", { "root": "src/app" }],
+      [
+        "expo-router",
+        {
+          "root": "src/app"
+        }
+      ],
       "expo-sqlite",
       "expo-dev-client",
       [
@@ -45,7 +54,9 @@
       [
         "expo-build-properties",
         {
-          "android": { "minSdkVersion": 29 }
+          "android": {
+            "minSdkVersion": 29
+          }
         }
       ],
       "@qvac/sdk/expo-plugin"
@@ -55,8 +66,13 @@
     },
     "extra": {
       "router": {
-        "origin": false
+        "origin": false,
+        "root": "src/app"
+      },
+      "eas": {
+        "projectId": "5b2fd823-ca1d-40f4-afcd-f6d05d7c0674"
       }
-    }
+    },
+    "owner": "gazzimons-team"
   }
 }
