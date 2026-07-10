@@ -93,6 +93,9 @@ export interface SkosPatch {
 // gazzimon/obdient-seed → PROTOCOL.md (OBDIENT-HARVEST/1). Keep in sync.
 // The outcome is deliberately NOT part of the content hash: a re-append that
 // adds the UX4 outcome days later keeps the same id and MERGES at ingest.
+// The hub RE-COMPUTES the id (anti-poisoning): id must equal
+// sha256(JSON.stringify(brief) + seniorAnswer), so the device MUST hash the
+// compact JSON.stringify serialization of `brief` — no pretty-printing.
 export interface CaseChunk {
   type: 'case';
   /** Schema version (PROTOCOL.md). Absent is treated as 1 by the hub. */

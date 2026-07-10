@@ -38,6 +38,7 @@ import {
 } from '@/domain/services/brief-assembler';
 import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontology';
 import { redactText } from '@/core/utils/redact';
+import { runGate, GateResult } from '@/domain/services/diagnostic-gate';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 
 // Ladder steps the intake may still need to walk. 'identity' groups
@@ -68,7 +69,10 @@ export type TurnRole = 'user' | 'junior' | 'senior';
 // Append-only case log (ADR-0009 Phase 3). Implementations must be
 // fire-and-forget: persistence errors must never break the chat hot path.
 export interface CaseLogPort {
-  logTurn(sessionId: string, role: TurnRole, content: string): void;
+  // `gate` is present only on diagnosis turns (junior preliminary + senior's
+  // first reply) — the verdict is persisted with the turn (PLAN-002 v2 N2b)
+  // and is what C1 later needs to assemble a CaseChunk.
+  logTurn(sessionId: string, role: TurnRole, content: string, gate?: GateResult): void;
   logBrief(sessionId: string, brief: DiagnosticBrief, prompt: string): void;
   // Owner symptom descriptions that matched no taxonomy entry — raw material
   // for growing the symptom ontology (ADR-0006-A Phase 4 curation loop).
@@ -546,12 +550,19 @@ export class DiagnosticIntakeSessionUseCase {
         history: [{ role: 'user', content: prompt }],
       });
       state.juniorDiagnosis = result.text;
-      this.caseLog.logTurn(sessionId, 'junior', result.text);
+      // Deterministic gate (N2a): validate the junior's diagnosis against the
+      // vehicle's real data. Filter, not retry — a failing answer ships marked
+      // UNCONFIRMED (UX1); the verdict persists with the turn.
+      const gate = runGate(result.text, {
+        dtcs: input.troubleCodes,
+        state: brief.vehicleState,
+      });
+      this.caseLog.logTurn(sessionId, 'junior', result.text, gate);
       // A diagnosis is rateable (one 👍/👎 in the chat); the senior offer rides
       // along when Claude is available.
       return this.senior.isConfigured()
-        ? { ...result, rateable: true, seniorOffer: true }
-        : { ...result, rateable: true };
+        ? { ...result, rateable: true, seniorOffer: true, gate }
+        : { ...result, rateable: true, gate };
     } catch (err) {
       console.warn('[IntakeSession] local diagnosis failed:', err);
       const msg = state.language === 'es'
@@ -610,7 +621,15 @@ export class DiagnosticIntakeSessionUseCase {
       const reply = await this.senior.converse(history);
       state.seniorHistory = [...history, { role: 'assistant', content: reply }];
       state.phase = 'senior';
-      this.caseLog.logTurn(sessionId, 'senior', reply);
+      // Deterministic gate (N2b): the senior's diagnosis is validated against
+      // the same brief facts before it gains any authority. The persisted
+      // verdict is the admission valve for the distillation harvest (C1):
+      // only gate-passed cases become CaseChunks.
+      const gate = runGate(reply, {
+        dtcs: input.troubleCodes,
+        state: brief.vehicleState,
+      });
+      this.caseLog.logTurn(sessionId, 'senior', reply, gate);
       return {
         text: reply,
         generatedAt: new Date(),
@@ -618,6 +637,7 @@ export class DiagnosticIntakeSessionUseCase {
         source: 'claude',
         rateable: true, // the senior's diagnosis gets the single thumb
         retrieval: { dtcId: null, claudeQueries: [], usedUnverified: true },
+        gate,
       };
     } catch (err) {
       console.warn('[IntakeSession] senior request failed, staying local:', err);

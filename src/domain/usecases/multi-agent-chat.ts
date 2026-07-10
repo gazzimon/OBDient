@@ -10,6 +10,7 @@
 import type { ChatWithQVACUseCase, ChatWithQVACInput } from './chat-with-qvac';
 import type { LLMInterpretationResult } from '@/domain/repositories/i-llm.repository';
 import type { ChatSource } from '@/domain/entities/chat-message';
+import type { GateResult } from '@/domain/services/diagnostic-gate';
 
 export interface MultiAgentChatResult extends LLMInterpretationResult {
   readonly source: ChatSource;
@@ -20,6 +21,10 @@ export interface MultiAgentChatResult extends LLMInterpretationResult {
   // Drives the single 👍/👎 in the chat — questions, greetings and follow-up
   // chatter carry no thumb (the case-level outcome lives in Reports instead).
   readonly rateable?: boolean;
+  // Deterministic gate verdict (PLAN-002 v2 N2) — present on the same diagnosis
+  // answers that are rateable. Hard violations render the answer as UNCONFIRMED
+  // in the UI (gate-as-filter, never a retry loop on-device).
+  readonly gate?: GateResult;
 }
 
 export class MultiAgentChatUseCase {

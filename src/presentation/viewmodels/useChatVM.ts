@@ -74,7 +74,7 @@ export function useChatVM() {
       });
 
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
-      const assistantMsg = createChatMessage('assistant', result.text, source);
+      const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
       // Only diagnosis answers carry the thumb (rateable); questions, greetings
@@ -105,7 +105,7 @@ export function useChatVM() {
         history: [{ role: 'user', content: prompt }],
       });
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
-      const assistantMsg = createChatMessage('assistant', result.text, source);
+      const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
       // Only diagnosis answers carry the thumb (rateable); questions, greetings
@@ -139,7 +139,7 @@ export function useChatVM() {
         history,
       });
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
-      const assistantMsg = createChatMessage('assistant', result.text, source);
+      const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
       addChatMessage(assistantMsg);
       // On success the case moved to the senior phase → no offer; on failure
       // the use case keeps the offer alive so the user can retry.

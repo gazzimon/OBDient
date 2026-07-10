@@ -4,6 +4,7 @@
 
 import type { CaseLogPort, TurnRole } from '@/domain/usecases/diagnostic-intake-session';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
+import type { GateResult } from '@/domain/services/diagnostic-gate';
 import {
   insertBrief,
   insertConversationTurn,
@@ -11,12 +12,15 @@ import {
 } from '@/data/datasources/storage.datasource';
 
 export class CaseLogDataSource implements CaseLogPort {
-  logTurn(sessionId: string, role: TurnRole, content: string): void {
+  logTurn(sessionId: string, role: TurnRole, content: string, gate?: GateResult): void {
     insertConversationTurn({
       sessionId,
       role,
       content,
       createdAt: new Date(),
+      // Verdict travels with the diagnosis turn (PLAN-002 v2 N2b) — C1 reads
+      // it back when assembling CaseChunks for the harvest.
+      gateJson: gate ? JSON.stringify(gate) : null,
     }).catch((err) => console.warn('[CaseLog] turn write failed:', err));
   }
 

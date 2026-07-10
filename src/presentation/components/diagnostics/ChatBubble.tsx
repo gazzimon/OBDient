@@ -35,6 +35,12 @@ export function ChatBubble({ message, feedback, onRate }: ChatBubbleProps) {
   const usedUnverified = feedback?.provenance.usedUnverified ?? false;
   const rating = feedback?.rating ?? null;
 
+  // Deterministic gate verdict (PLAN-002 v2 UX1) — only diagnosis messages
+  // carry it. Hard violations mark the answer as unconfirmed, with the
+  // contradicted facts listed; the answer itself is never hidden.
+  const gate = !isUser ? message.gate : undefined;
+  const hardViolations = gate?.violations.filter((v) => v.weight === 'hard') ?? [];
+
   return (
     <View className={`mb-3 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
@@ -54,6 +60,33 @@ export function ChatBubble({ message, feedback, onRate }: ChatBubbleProps) {
         >
           {message.content}
         </Text>
+
+        {gate != null && (
+          <View className="mt-2 pt-2 border-t border-brand-border">
+            {gate.passed ? (
+              <View className="flex-row items-center gap-1">
+                <MaterialCommunityIcons name="shield-check-outline" size={12} color={MINT} />
+                <Text className="font-mono text-[10px]" style={{ color: MINT }}>
+                  validated against vehicle data
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View className="flex-row items-center gap-1">
+                  <MaterialCommunityIcons name="shield-alert-outline" size={12} color={AMBER} />
+                  <Text className="font-mono text-[10px]" style={{ color: AMBER }}>
+                    UNCONFIRMED — contradicts vehicle data
+                  </Text>
+                </View>
+                {hardViolations.map((v, i) => (
+                  <Text key={i} className="text-brand-muted font-mono text-[10px] mt-0.5">
+                    · {v.detail}
+                  </Text>
+                ))}
+              </>
+            )}
+          </View>
+        )}
 
         {showFeedback && (
           <View className="mt-3 pt-2 border-t border-brand-border flex-row items-center justify-between">

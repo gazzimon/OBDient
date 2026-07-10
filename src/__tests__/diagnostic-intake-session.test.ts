@@ -50,13 +50,13 @@ function input(userText: string, overrides: Partial<ChatWithQVACInput> = {}): Ch
   };
 }
 
-function fakeJunior(): JuniorChatPort & { calls: ChatWithQVACInput[] } {
+function fakeJunior(reply = 'junior reply'): JuniorChatPort & { calls: ChatWithQVACInput[] } {
   const calls: ChatWithQVACInput[] = [];
   return {
     calls,
     async execute(i: ChatWithQVACInput): Promise<MultiAgentChatResult> {
       calls.push(i);
-      return { text: 'junior reply', generatedAt: new Date(), isAiGenerated: true, source: 'carpsy' };
+      return { text: reply, generatedAt: new Date(), isAiGenerated: true, source: 'carpsy' };
     },
   };
 }
@@ -66,7 +66,7 @@ function juniorPrompt(junior: ReturnType<typeof fakeJunior>, i = 0): string {
   return junior.calls[i]?.history[0]?.content ?? '';
 }
 
-function fakeSenior(configured = true): SeniorAgentPort & {
+function fakeSenior(configured = true, reply?: string): SeniorAgentPort & {
   calls: { role: string; content: string }[][];
   failNext: { value: boolean };
 } {
@@ -79,24 +79,24 @@ function fakeSenior(configured = true): SeniorAgentPort & {
     async converse(history) {
       if (failNext.value) throw new Error('network down');
       calls.push(history.map((t) => ({ ...t })));
-      return `senior reply #${calls.length}`;
+      return reply ?? `senior reply #${calls.length}`;
     },
   };
 }
 
 function fakeLog(): CaseLogPort & {
-  turns: { role: string; content: string }[];
+  turns: { role: string; content: string; gate?: { passed: boolean } }[];
   briefs: { prompt: string }[];
   candidates: string[];
 } {
-  const turns: { role: string; content: string }[] = [];
+  const turns: { role: string; content: string; gate?: { passed: boolean } }[] = [];
   const briefs: { prompt: string }[] = [];
   const candidates: string[] = [];
   return {
     turns,
     briefs,
     candidates,
-    logTurn: (_s, role, content) => { turns.push({ role, content }); },
+    logTurn: (_s, role, content, gate) => { turns.push({ role, content, ...(gate ? { gate } : {}) }); },
     logBrief: (_s, _b, prompt) => { briefs.push({ prompt }); },
     logSymptomCandidate: (_s, description) => { candidates.push(description); },
   };
@@ -467,5 +467,75 @@ describe('interviewer (optional LLM question phrasing over the briefing)', () =>
     const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), fakeSenior(), fakeLog(), throwing);
     const res = await uc.execute('s1', input('no arranca', { troubleCodes: [dtc('P0335')] }));
     expect(res.text).toContain('marca, modelo, año');
+  });
+});
+
+describe('deterministic gate on diagnosis turns (PLAN-002 v2 N2)', () => {
+  const codes = [dtc('P0335')]; // crank sensor — closure: sensor_crank/sensors_engine/powertrain
+
+  // Walks the full interview so fase 2 (junior diagnosis) fires.
+  async function runInterview(uc: DiagnosticIntakeSessionUseCase) {
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    return uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+  }
+
+  it('junior diagnosis citing an invented DTC + foreign domain ships UNCONFIRMED', async () => {
+    const junior = fakeJunior('The P0999 code proves the catalytic converter failed.');
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), log);
+
+    const res = await runInterview(uc);
+    expect(res.gate?.passed).toBe(false);
+    const rules = res.gate?.violations.map((v) => v.rule) ?? [];
+    expect(rules).toContain('G2'); // P0999 is not an active code
+    expect(rules).toContain('G1'); // catalyst is incoherent with a crank-sensor DTC
+
+    // The verdict persists with the junior diagnosis turn (N2b)
+    const gated = log.turns.filter((t) => t.role === 'junior' && t.gate != null);
+    expect(gated).toHaveLength(1);
+    expect(gated[0]?.gate?.passed).toBe(false);
+  });
+
+  it('a grounded junior diagnosis passes the gate', async () => {
+    const junior = fakeJunior('P0335 indicates a faulty crankshaft position sensor; check its wiring.');
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog());
+
+    const res = await runInterview(uc);
+    expect(res.gate?.passed).toBe(true);
+    expect(res.gate?.violations).toEqual([]);
+    expect(res.gate?.citedDtcs).toEqual(['P0335']);
+  });
+
+  it("the senior's first reply is gated and the verdict persists with the turn", async () => {
+    const senior = fakeSenior(true, 'Replace the catalytic converter and clear the codes.');
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, log);
+
+    await runInterview(uc);
+    const res = await uc.requestSenior('s1', input('', { troubleCodes: codes }));
+    expect(res.source).toBe('claude');
+    expect(res.gate?.passed).toBe(false); // catalyst ⊄ closure(P0335)
+
+    const gated = log.turns.filter((t) => t.role === 'senior' && t.gate != null);
+    expect(gated).toHaveLength(1);
+    expect(gated[0]?.gate?.passed).toBe(false);
+  });
+
+  it('intake questions and follow-up chatter carry NO gate verdict', async () => {
+    const junior = fakeJunior();
+    const log = fakeLog();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), log);
+
+    const q1 = await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    expect(q1.gate).toBeUndefined(); // ladder question, not a diagnosis
+
+    await runInterview(uc);
+    // Follow-up local chat after the diagnosis (awaiting_senior phase)
+    const followUp = await uc.execute('s1', input('gracias, ¿algo más?', { troubleCodes: codes }));
+    expect(followUp.gate).toBeUndefined();
+
+    // Exactly ONE gated turn in the whole log: the junior diagnosis
+    expect(log.turns.filter((t) => t.gate != null)).toHaveLength(1);
   });
 });

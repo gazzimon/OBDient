@@ -126,7 +126,8 @@ export async function initializeDatabase(): Promise<void> {
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        gate_json TEXT
       );
     `);
     db.run(`
@@ -156,6 +157,7 @@ export async function initializeDatabase(): Promise<void> {
       `ALTER TABLE sessions ADD COLUMN messages_json TEXT NOT NULL DEFAULT '[]'`,
       `ALTER TABLE sessions ADD COLUMN mileage REAL`,
       `ALTER TABLE outcomes ADD COLUMN resolved TEXT`,
+      `ALTER TABLE conversation_turns ADD COLUMN gate_json TEXT`,
     ]) {
       try { db.run(sql); } catch { /* column already exists */ }
     }

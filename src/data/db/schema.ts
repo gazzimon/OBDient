@@ -75,6 +75,10 @@ export const conversationTurnsTable = sqliteTable('conversation_turns', {
   role: text('role', { enum: ['user', 'junior', 'senior'] }).notNull(),
   content: text('content').notNull(),
   createdAt: int('created_at', { mode: 'timestamp' }).notNull(),
+  // Deterministic gate verdict (GateResult JSON) — only on diagnosis turns
+  // (junior preliminary + senior first reply). PLAN-002 v2 N2b; the admission
+  // signal C1 reads when assembling CaseChunks.
+  gateJson: text('gate_json'),
 });
 
 // Case closure — "was it resolved? what was the cause?" (PLAN-002 UX4 / ADR-0004
