@@ -34,6 +34,17 @@ function bytesToString(data: unknown): string {
   return s;
 }
 
+// Mirror of bytesToString for the write side. BareKitIPC#_write hands
+// data.buffer/byteOffset/byteLength straight to the native module, so writes
+// MUST be a TypedArray — a plain string throws "Value is undefined, expected
+// an Object" asynchronously inside streamx and the command never reaches the
+// worklet.
+function stringToBytes(s: string): Uint8Array {
+  const arr = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) arr[i] = s.charCodeAt(i) & 0xff;
+  return arr;
+}
+
 const STEP_TIMEOUT_MS = 15_000;
 
 export async function runP2PSpike(): Promise<string> {
@@ -78,7 +89,7 @@ export async function runP2PSpike(): Promise<string> {
       });
 
     const send = (cmd: string, extra: Record<string, unknown> = {}) =>
-      IPC.write(JSON.stringify({ cmd, ...extra }) + '\n');
+      IPC.write(stringToBytes(JSON.stringify({ cmd, ...extra }) + '\n'));
 
     // Step 0 — the worklet booted at all (Bare runtime + JS bundle).
     const ready = await expect('ready');
