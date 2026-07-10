@@ -21,9 +21,10 @@ consume número de ADR.
 6. **`Relacionados` siempre resuelve.** Si un ADR cita `ADR-0001`, ese archivo
    debe existir. Citar un ADR inexistente es una deuda a saldar (ver Huecos).
 
-> **Planes ≠ ADRs.** Un documento `PLAN-NNN` (p. ej. `001.txt` en la raíz del
-> repo) es exploración previa: puede proponer abrir varios ADRs, pero no es una
-> decisión por sí mismo. No vive en `docs/ADR/` ni consume número de ADR.
+> **Planes ≠ ADRs.** Un documento `PLAN-NNN` es exploración previa: puede proponer
+> abrir varios ADRs, pero no es una decisión por sí mismo. Se co-ubica en
+> `docs/ADR/` con prefijo `PLAN-` (`.md`) para tenerlo junto a los ADRs que
+> propone, pero **no consume número de ADR** ni es inmutable como ellos.
 
 ## Índice
 
@@ -44,8 +45,8 @@ consume número de ADR.
 
 | Doc | Título | Ubicación |
 |-----|--------|-----------|
-| PLAN-001 | Closed-loop con gate determinístico (patrón arbiter) | [../../001.txt](../../001.txt) |
-| PLAN-002 | Segundo lazo de calidad — validación en campo de un diagnóstico (gate, UI/UX, ComputerPool) | [../../002.txt](../../002.txt) |
+| PLAN-001 | Closed-loop con gate determinístico (patrón arbiter) | [PLAN-001-closed-loop-gate.md](PLAN-001-closed-loop-gate.md) |
+| PLAN-002 | Segundo lazo de calidad — validación en campo de un diagnóstico (gate, UI/UX, ComputerPool) | [PLAN-002-field-validation-gate.md](PLAN-002-field-validation-gate.md) |
 
 ## Huecos conocidos (deuda de disciplina)
 
@@ -113,13 +114,22 @@ Estado de consistencia tras leer 0001 ⋈ 0002 ⋈ 0003 ⋈ 0004 ⋈ 0005 ⋈ 00
 ## Pasos a seguir
 
 Los ocho ADRs están redactados (todos `Propuesto`, salvo 0001 `Aceptado`). El roadmap
-de implementación lo fija **PLAN-002** ([../../002.txt](../../002.txt)): el segundo lazo
+de implementación lo fija **PLAN-002** ([PLAN-002-field-validation-gate.md](PLAN-002-field-validation-gate.md)): el segundo lazo
 de calidad (validación en campo de un diagnóstico vía el gate determinístico), con la
 columna social/aprendizaje (0002/0003/0004/0005/0007) **congelada como post-MVP**.
 
 > **Actualización 2026-07-06:** ADR-0009 inserta el track de admisión/handoff senior
 > como prioridad de producto por encima del orden M1→M3 original: M0 (hecho) → Fase 0-3
 > de ADR-0009 (que absorben M1 y la Fase 0-1 de ADR-0006-A) → gate M3 como pre-flight.
+>
+> **Actualización 2026-07-10 (estado verificado contra el código):** M0 ✅, M1 ✅ y
+> UX4 (captura de resultado, tabla `outcomes` + UI tap-only en `reports.tsx`) ✅ están
+> construidos; ADR-0009 (admisión → handoff senior con case-base append-only) quedó
+> sustancialmente hecho. **M2 (salida estructurada) y M3 (gate G1-G6 + lazo acotado)
+> siguen sin construir**: el único gate existente es G0 (entrevista). El pivote a
+> handoff senior **re-scopea** M2/M3 — ver la sección *IMPLEMENTATION STATUS — 2026-07-10*
+> al inicio de PLAN-002. Falta cerrar el lazo de aprendizaje (Steps 4a/5/6/7 del ROADMAP)
+> sobre los datos que UX4 ya empezó a acumular.
 
 1. **Empezar por M0 de PLAN-002** = Fase 0 de ADR-0006 (`faultClassFor()` puro) — cero
    cambio de comportamiento, prerequisito de todo el núcleo.

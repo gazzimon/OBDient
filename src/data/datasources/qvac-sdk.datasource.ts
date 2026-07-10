@@ -70,6 +70,13 @@ If parameters are normal, say so briefly and reassuringly.
 Prioritize safety: if something is urgent, state it in the first sentence.
 Maximum 3 sentences. No unnecessary technical jargon.`;
 
+// Qwen3 soft switch (PLAN-002 v2 N0): suppresses the <think>…</think> block the
+// model would otherwise generate — tokens we strip and never show, i.e. pure
+// latency/battery waste. With the switch, Qwen3 emits an empty think block
+// (~4 tokens) instead of a full reasoning trace. Verified via the [AUDIT]
+// inference records (completion_tokens / total_ms) before/after.
+const QWEN_NO_THINK = ' /no_think';
+
 function stripThinkingTokens(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
 }
@@ -220,6 +227,12 @@ export class QvacSDKDataSource {
     }
   }
 
+  // Only Qwen-family models understand the /no_think soft switch; the Llama 3.2
+  // fallback gets the prompt untouched (stray switch text could mildly confuse it).
+  private noThinkSuffix(): string {
+    return /qwen/i.test(this.lastModelSrc) ? QWEN_NO_THINK : '';
+  }
+
   isLoaded(): boolean {
     return this.modelId !== null;
   }
@@ -279,7 +292,7 @@ export class QvacSDKDataSource {
     // Without this, the first real user message follows the context directly as a second consecutive
     // user turn — invalid chat format that confuses the model.
     const llmHistory = [
-      { role: 'system' as const,    content: systemPrompt },
+      { role: 'system' as const,    content: systemPrompt + this.noThinkSuffix() },
       { role: 'user' as const,      content: boundedContext },
       { role: 'assistant' as const, content: 'Understood. I have the vehicle data. How can I help?' },
       ...cappedHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
@@ -312,7 +325,7 @@ export class QvacSDKDataSource {
     );
 
     const history = [
-      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'system' as const, content: SYSTEM_PROMPT + this.noThinkSuffix() },
       { role: 'user' as const,   content: userMessage },
     ];
 

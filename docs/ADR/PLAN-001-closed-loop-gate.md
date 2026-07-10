@@ -340,7 +340,7 @@ Cada fase es desplegable sola y de-riskea la siguiente (estilo ADR-0004/0005).
 - **ADR-0008 — "Captura de freeze frame y readiness (mode 01-PID-01 / mode 02;
   mode 06 fuera)"** (Fase 6). NOTA: este plan reservaba el número 0007 para esta
   decisión, pero 0007 terminó usándose para firma/rotación de claves; el ADR de
-  hardware es **0008** ([docs/ADR/0008-readiness-freezeframe-capture.md]). Decisión de
+  hardware es **0008** ([0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md)). Decisión de
   hardware/protocolo separada porque arrastra riesgo de compatibilidad ELM327 y latencia
   de lectura; habilita G7-G8. Resuelve los campos `freezeFrame.*` que el `caseSignature`
   del ADR-0004 ya asume mediante degradación con gracia en `bucket()`, no recolectándolos
