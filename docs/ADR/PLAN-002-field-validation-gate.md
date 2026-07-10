@@ -163,11 +163,28 @@ Option D (a proxy in front of the senior) is deferred: BYOK already solved key
 security (audit C1), so D only makes sense with a subsidized/B2B product model.
 
 **C-track milestones (harvest transport):**
-- **C0 — Spike: Hypercore inside the Bare worklet.** A minimal second worklet
+- **C0 — Spike: Hypercore inside the Bare worklet. ✅ PASSED ON-DEVICE
+  (2026-07-10, Motorola edge 60 fusion / Android 16).** A minimal second worklet
   (own bundle via `bare-pack`, launched with `react-native-bare-kit`) that opens
   a Hypercore, appends a block, reads it back, reports over IPC. THE technical
-  risk of the whole track (native addons — udx/sodium — inside bare-kit on
-  Android; Keet mobile proves the stack works). Everything else is plumbing.
+  risk of the whole track — native addons (udx/sodium/rocksdb) inside bare-kit
+  on Android — is retired: `worklet boot: OK · hypercore: OK (1-block roundtrip)
+  · hyperswarm: OK`. Two blockers were found and fixed on the way:
+  (1) the manifest-aware `link.mjs` resolves addons from the node_modules ROOT
+  and silently skips nested packages (`bare-dns`, `sodium-native`, `udx-native`,
+  `rocksdb-native`…) — they are now pinned as root devDependencies so
+  `bare-link` finds them and the APK links their `.so`s. The same gap made the
+  QVAC worker abort the entire app at startup (`ADDON_NOT_FOUND:
+  libbare-dns.2.1.4.so` → unhandled rejection → SIGABRT), which presented as a
+  "silent" crash because `capture-crash.ps1` filtered out the `bare` logcat tag
+  (also fixed). After any `npm install` that moves bare-* packages, verify
+  `react-native-bare-kit/android/src/main/addons/` still contains the
+  manifest's addons before trusting an existing APK.
+  (2) `Worklet.IPC.write()` hands `data.buffer/byteOffset/byteLength` straight
+  to the native module, so writes MUST be TypedArrays — plain strings throw
+  "Value is undefined, expected an Object" asynchronously inside streamx and
+  the command never reaches the worklet (`stringToBytes` added in
+  `p2p-spike.ts`). Everything else is plumbing.
 - **C1 — `CaseChunk` + local feed as outbox.** New chunk type in
   `distributed-chunk.ts` carrying the corrections pair
   `{case_id: sha256(content), brief, senior_answer, gate, outcome?}`. The local
