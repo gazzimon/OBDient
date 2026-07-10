@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundleId": "4ad5870b188c6615e03e55c49841ce2f5e14e3b8b4407b4d190e93ec5539a0bf",
+  "bundleId": "a95805f9ff7a85ea9001d6108c73635ded11a126cab049bac49bcf143aeb070f",
   "addons": [
     "@qvac/bci-whispercpp",
     "@qvac/classification-ggml",
