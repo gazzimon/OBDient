@@ -177,9 +177,20 @@ security (audit C1), so D only makes sense with a subsidized/B2B product model.
 - **C2 — Worklet IPC bridge.** `hypercore-knowledge.datasource.ts` talks to the
   worklet over RPC instead of importing hypercore directly (Metro stub path
   retired); graceful degradation preserved (worklet dead → today's behavior).
-- **C3 — Seed peer.** `tools/seed-peer/` — plain Node, runs on a PC/VPS. Joins
-  the harvest topic, replicates contributor feeds read-only, persists, exports
-  deduped `corrections.jsonl` (ADR-0002 F1 format). Testable on desktop today.
+- **C3 — Seed peer. ✅ BUILT (2026-07-10) — extracted to its own repo:
+  `gazzimon/obdient-seed` (private).** Plain Node, runs on a PC/VPS. Joins the
+  harvest topic, replicates contributor feeds read-only, persists, exports
+  deduped `corrections.jsonl` (ADR-0002 F1 format). Self-test 13/13 (wire
+  preamble incl. TCP coalescing, replication, ingest policy). The wire & data
+  contract lives in that repo's `PROTOCOL.md` (source of truth; the app's
+  `distributed-chunk.ts` mirrors it).
+  **D-ready ingest (decided 2026-07-10):** transport and ingestion are split —
+  `src/seed/` (P2P transport, phase C) vs `src/ingest/store.mjs`
+  (transport-agnostic case store) — so the phase-D proxy plugs into the SAME
+  store as a second transport. The store MERGES by content-addressed id
+  (outcome is not hashed): the proxy captures brief+answer at senior-call time
+  (outcome null), the UX4 outcome arrives days later offline via C and
+  enriches the same record. Non-null outcome wins; ties → newest `createdAt`.
 - **C4 — Topic separation.** Case harvest uses its own DHT topic
   (`obdient-harvest-v1`), separate from the knowledge-sharing topic
   (`obdient-rag-v1`): peers don't need each other's raw cases (knowledge flows

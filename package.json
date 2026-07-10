@@ -59,10 +59,7 @@
     "test:watch": "jest --watch",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "p2p:pack": "bare-pack --target android --target ios --linked --out p2p/harvest-worklet.bundle.mjs p2p/harvest-worklet.mjs",
-    "seed": "node tools/seed-peer/index.mjs",
-    "seed:harvest": "node tools/seed-peer/harvest.mjs",
-    "seed:test": "node tools/seed-peer/test-replication.mjs"
+    "p2p:pack": "bare-pack --target android --target ios --linked --out p2p/harvest-worklet.bundle.mjs p2p/harvest-worklet.mjs"
   },
   "private": true,
   "overrides": {

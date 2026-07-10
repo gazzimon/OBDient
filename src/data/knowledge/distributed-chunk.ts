@@ -88,8 +88,15 @@ export interface SkosPatch {
 // (HARVEST_TOPIC) replicated only by the seed peer — never on the knowledge
 // topic: peers get curated knowledge via the signed bundle (ADR-0002), not
 // each other's raw cases (data minimization by construction).
+//
+// CONTRACT: the source of truth for this schema and the wire protocol is
+// gazzimon/obdient-seed → PROTOCOL.md (OBDIENT-HARVEST/1). Keep in sync.
+// The outcome is deliberately NOT part of the content hash: a re-append that
+// adds the UX4 outcome days later keeps the same id and MERGES at ingest.
 export interface CaseChunk {
   type: 'case';
+  /** Schema version (PROTOCOL.md). Absent is treated as 1 by the hub. */
+  v: 1;
   /** sha256 of (briefJson + seniorAnswer) — content-addressed dedup key. */
   id: string;
   /** Redacted DiagnosticBrief JSON — no VIN by construction (redact.ts). */
