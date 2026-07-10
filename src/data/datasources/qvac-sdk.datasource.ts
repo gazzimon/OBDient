@@ -48,6 +48,13 @@ const DEFAULT_MODEL = QWEN3_1_7B_URL;
 // is ample headroom and costs only a few MB of extra KV cache at 0.6B.
 const MODEL_CTX_SIZE = 4096;
 
+// Hard ceiling on generated tokens (audit M4). The system prompt already asks for
+// ≤3 sentences, but an adversarial/looping prompt could otherwise generate up to
+// ctx_size — wasted battery/time and a wall of uncontrolled text in the UI. We cap
+// defensively by stopping consumption of the stream; ~700 tokens is well beyond a
+// normal diagnostic reply.
+const MAX_OUTPUT_TOKENS = 700;
+
 const SYSTEM_PROMPT = `You are OBDient, an expert automotive diagnostic assistant.
 You receive real-time OBD-II vehicle data and may or may not have fault codes.
 Respond in the same language the user writes in.
@@ -176,6 +183,8 @@ export class QvacSDKDataSource {
         if (firstTokenAt === null) firstTokenAt = Date.now(); // TTFT marker
         text += token;
         tokenCount++;
+        // Defensive output cap (audit M4): stop consuming once we hit the ceiling.
+        if (tokenCount >= MAX_OUTPUT_TOKENS) break;
       }
       // Artifact log: proves inference ran ON-DEVICE and records throughput.
       const ms = Date.now() - startedAt;

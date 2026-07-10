@@ -4,7 +4,7 @@
 import type { IOBDRepository } from '@/domain/repositories/i-obd.repository';
 import type { Vehicle } from '@/domain/entities/vehicle';
 import { upsertVehicle, getVehicleByVin } from '@/data/datasources/storage.datasource';
-import { fetchVehicleInfoByVin } from '@/data/datasources/vincario.datasource';
+import { fetchVehicleInfoByVin } from '@/data/datasources/nhtsa.datasource';
 
 export interface ConnectToVehicleInput {
   deviceAddress: string;
@@ -28,14 +28,14 @@ export class ConnectToVehicleUseCase {
     // Attempt VIN read — non-fatal, not all vehicles/adapters support mode 09
     const vin = await this.obdRepo.readVin();
 
-    // If we got a VIN, check SQLite cache first to avoid consuming Vincario credits
-    // on every reconnection to the same vehicle.
+    // If we got a VIN, check SQLite cache first to avoid a redundant network
+    // decode on every reconnection to the same vehicle.
     const cached = vin ? await getVehicleByVin(vin) : null;
     const vinInfo = cached?.manufacturer
       ? { make: cached.make, model: cached.model ?? null, year: cached.year ?? null, manufacturer: cached.manufacturer, plantCountry: cached.plantCountry ?? null }
       : vin ? await fetchVehicleInfoByVin(vin) : null;
 
-    // Enrich: explicit input > Vincario API > adapter-detected > defaults
+    // Enrich: explicit input > NHTSA decode > adapter-detected > defaults
     const enriched: Vehicle = {
       ...vehicle,
       vin:          vin ?? vehicle.vin,

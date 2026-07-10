@@ -35,8 +35,10 @@ interface BluetoothContextValue {
 
 const BluetoothContext = createContext<BluetoothContextValue | null>(null);
 
-// Android 12+ (API 31) requires BLUETOOTH_CONNECT/SCAN as runtime permissions.
-// Older versions only need the manifest entries (plus location on 10-11).
+// Android 12+ (API 31) requires BLUETOOTH_CONNECT as a runtime permission.
+// The app only connects to already-bonded adapters (getBondedDevices) — it never
+// runs device discovery — so it needs no location permission on any version, and
+// pre-31 the manifest BLUETOOTH entries are enough (audit I2).
 async function requestBluetoothPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
 
@@ -48,11 +50,7 @@ async function requestBluetoothPermissions(): Promise<boolean> {
     return Object.values(result).every((r) => r === PermissionsAndroid.RESULTS.GRANTED);
   }
 
-  // Android 10-11: Bluetooth Classic discovery needs fine location
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-  );
-  return result === PermissionsAndroid.RESULTS.GRANTED;
+  return true;
 }
 
 // Persists the current active session to SQLite. Fire-and-forget — never throws.

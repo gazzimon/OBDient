@@ -25,6 +25,7 @@ import { useDiagnosticsVM } from '@/presentation/viewmodels/useDiagnosticsVM';
 import { useChatVM } from '@/presentation/viewmodels/useChatVM';
 import { useKeyboardHeight } from '@/presentation/hooks/useKeyboardHeight';
 import { ChatBubble } from '@/presentation/components/diagnostics/ChatBubble';
+import { DisclaimerNote } from '@/presentation/components/feedback/Disclaimer';
 import { createChatMessage } from '@/domain/entities/chat-message';
 
 const MINT = '#2DE1A5';
@@ -289,6 +290,9 @@ export default function DiagnosticsScreen() {
             </Pressable>
           </View>
         )}
+
+        {/* Persistent informational-use notice (audit I1) */}
+        <DisclaimerNote className="px-6 pb-1.5" />
 
         {/* Input bar — always enabled; "+" starts a new diagnosis */}
         <View className="px-4 pb-4 pt-2 flex-row items-end gap-3 border-t border-brand-border">

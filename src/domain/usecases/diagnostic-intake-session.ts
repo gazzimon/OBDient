@@ -37,6 +37,7 @@ import {
   renderLocalDiagnosisPrompt,
 } from '@/domain/services/brief-assembler';
 import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontology';
+import { redactText } from '@/core/utils/redact';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 
 // Ladder steps the intake may still need to walk. 'identity' groups
@@ -644,7 +645,11 @@ export class DiagnosticIntakeSessionUseCase {
     }
     state.language = detectLanguage(userText, state.language);
 
-    const history = [...state.seniorHistory, { role: 'user' as const, content: userText }];
+    // Redact VIN / plate / email from every follow-up turn before it leaves the
+    // device (ADR-0009 data contract; audit M3). The initial brief is already
+    // redacted by construction in brief-assembler; this closes the free-text
+    // follow-ups. Stored redacted so later turns reuse the clean history.
+    const history = [...state.seniorHistory, { role: 'user' as const, content: redactText(userText) }];
     try {
       const reply = await this.senior.converse(history);
       state.seniorHistory = [...history, { role: 'assistant', content: reply }];

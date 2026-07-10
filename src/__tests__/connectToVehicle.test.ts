@@ -1,5 +1,5 @@
 // Tests the VIN enrichment logic in ConnectToVehicleUseCase:
-// - First connection: calls Vincario API
+// - First connection: calls the NHTSA VIN decoder
 // - Reconnection with same VIN: uses SQLite cache, skips API
 // - No VIN: skips both cache and API
 
@@ -28,16 +28,16 @@ jest.mock('@/data/datasources/storage.datasource', () => ({
   getVehicleByVin: jest.fn(),
 }));
 
-// Mock Vincario datasource
-jest.mock('@/data/datasources/vincario.datasource', () => ({
+// Mock NHTSA datasource
+jest.mock('@/data/datasources/nhtsa.datasource', () => ({
   fetchVehicleInfoByVin: jest.fn(),
 }));
 
 import { upsertVehicle, getVehicleByVin } from '@/data/datasources/storage.datasource';
-import { fetchVehicleInfoByVin } from '@/data/datasources/vincario.datasource';
+import { fetchVehicleInfoByVin } from '@/data/datasources/nhtsa.datasource';
 
 const mockGetVehicleByVin   = getVehicleByVin   as jest.Mock;
-const mockFetchVincario      = fetchVehicleInfoByVin as jest.Mock;
+const mockFetchVin           = fetchVehicleInfoByVin as jest.Mock;
 const mockReadVin            = mockObdRepo.readVin as jest.Mock;
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -50,10 +50,10 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
     useCase = new ConnectToVehicleUseCase(mockObdRepo);
   });
 
-  it('calls Vincario and enriches vehicle on first connection (no cache)', async () => {
+  it('calls the VIN decoder and enriches vehicle on first connection (no cache)', async () => {
     mockReadVin.mockResolvedValue('8AGEA76C0RR117525');
     mockGetVehicleByVin.mockResolvedValue(null); // no cache
-    mockFetchVincario.mockResolvedValue({
+    mockFetchVin.mockResolvedValue({
       make:         'Chevrolet',
       model:        null,
       year:         2024,
@@ -63,7 +63,7 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
 
     const { vehicle } = await useCase.execute({ deviceAddress: 'AA:BB:CC:DD:EE:FF' });
 
-    expect(mockFetchVincario).toHaveBeenCalledWith('8AGEA76C0RR117525');
+    expect(mockFetchVin).toHaveBeenCalledWith('8AGEA76C0RR117525');
     expect(vehicle.make).toBe('Chevrolet');
     expect(vehicle.year).toBe(2024);
     expect(vehicle.manufacturer).toBe('General Motors De Argentina Srl');
@@ -72,7 +72,7 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
     expect(upsertVehicle).toHaveBeenCalled();
   });
 
-  it('uses SQLite cache on reconnection — skips Vincario API', async () => {
+  it('uses SQLite cache on reconnection — skips the VIN decoder API', async () => {
     mockReadVin.mockResolvedValue('8AGEA76C0RR117525');
     mockGetVehicleByVin.mockResolvedValue({
       id:             'cached-id',
@@ -89,7 +89,7 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
 
     const { vehicle } = await useCase.execute({ deviceAddress: 'AA:BB:CC:DD:EE:FF' });
 
-    expect(mockFetchVincario).not.toHaveBeenCalled(); // cache hit — no API call
+    expect(mockFetchVin).not.toHaveBeenCalled(); // cache hit — no API call
     expect(vehicle.make).toBe('Chevrolet');
     expect(vehicle.manufacturer).toBe('General Motors De Argentina Srl');
   });
@@ -100,15 +100,15 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
     const { vehicle } = await useCase.execute({ deviceAddress: 'AA:BB:CC:DD:EE:FF' });
 
     expect(mockGetVehicleByVin).not.toHaveBeenCalled();
-    expect(mockFetchVincario).not.toHaveBeenCalled();
+    expect(mockFetchVin).not.toHaveBeenCalled();
     expect(vehicle.make).toBe('Unknown');
     expect(vehicle.vin).toBeNull();
   });
 
-  it('explicit input overrides Vincario data', async () => {
+  it('explicit input overrides decoded data', async () => {
     mockReadVin.mockResolvedValue('8AGEA76C0RR117525');
     mockGetVehicleByVin.mockResolvedValue(null);
-    mockFetchVincario.mockResolvedValue({
+    mockFetchVin.mockResolvedValue({
       make: 'Chevrolet', model: null, year: 2024,
       manufacturer: 'General Motors De Argentina Srl', plantCountry: 'Argentina',
     });
@@ -125,10 +125,10 @@ describe('ConnectToVehicleUseCase — VIN enrichment', () => {
     expect(vehicle.year).toBe(2024);
   });
 
-  it('still connects when Vincario API fails', async () => {
+  it('still connects when the VIN decoder API fails', async () => {
     mockReadVin.mockResolvedValue('8AGEA76C0RR117525');
     mockGetVehicleByVin.mockResolvedValue(null);
-    mockFetchVincario.mockResolvedValue(null); // API returned null
+    mockFetchVin.mockResolvedValue(null); // API returned null
 
     const { vehicle } = await useCase.execute({ deviceAddress: 'AA:BB:CC:DD:EE:FF' });
 

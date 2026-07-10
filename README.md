@@ -315,13 +315,12 @@ On the device:
 
 ## Configuration (`.env`)
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `EXPO_PUBLIC_VINCARIO_API_KEY` | No | Online VIN decode (Vincario) |
-| `EXPO_PUBLIC_VINCARIO_SECRET_KEY` | No | Online VIN decode (Vincario) |
-| `EXPO_PUBLIC_ANTHROPIC_API_KEY` | No | Claude cloud fallback + quality evaluator |
-
-Diagnostic AI (CARpsy, SHIMI, RAG) needs **no API keys** — it runs fully on-device.
+**The app ships with no embedded API keys.** VIN decoding uses the keyless NHTSA vPIC
+API. The Claude senior-review key is **not** an env var — `EXPO_PUBLIC_*` values are
+inlined into the public JS bundle by Metro, so an embedded key is extractable from the
+APK. The user supplies their own Anthropic key at runtime in **Settings → Claude AI**;
+it is stored on-device only. Diagnostic AI (CARpsy, SHIMI, RAG) needs no API keys — it
+runs fully on-device.
 
 ---
 

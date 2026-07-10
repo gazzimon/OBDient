@@ -9,11 +9,7 @@
     "scheme": "obdient",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.obdient.app",
-      "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
-        "NSMicrophoneUsageDescription": "Allow OBDient to use the microphone for voice commands."
-      }
+      "bundleIdentifier": "com.obdient.app"
     },
     "android": {
       "package": "com.obdient.app",
@@ -30,9 +26,6 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO",
         "android.permission.VIBRATE"
       ]
     },
@@ -46,16 +39,11 @@
       "expo-sqlite",
       "expo-dev-client",
       [
-        "expo-speech-recognition",
-        {
-          "microphonePermission": "Allow OBDient to use the microphone for voice commands."
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 29
+            "minSdkVersion": 29,
+            "allowBackup": false
           }
         }
       ],

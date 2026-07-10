@@ -34,6 +34,9 @@ interface SettingsState {
   contributeKnowledge: boolean;
   // Anthropic API key for Claude cloud fallback (general questions + quality evaluation).
   claudeApiKey: string | null;
+  // Whether the user has acknowledged the informational-use disclaimer (audit I1).
+  // Gates the first-run modal; once true the modal never shows again.
+  disclaimerAccepted: boolean;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -45,6 +48,7 @@ interface SettingsState {
   setKnowledgeNetworkEnabled: (enabled: boolean) => void;
   setContributeKnowledge: (enabled: boolean) => void;
   setClaudeApiKey: (key: string | null) => void;
+  setDisclaimerAccepted: (accepted: boolean) => void;
   reset: () => void;
 }
 
@@ -59,6 +63,7 @@ const DEFAULTS = {
   knowledgeNetworkEnabled: false,
   contributeKnowledge: false,
   claudeApiKey: null as string | null,
+  disclaimerAccepted: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -76,6 +81,7 @@ export const useSettingsStore = create<SettingsState>()(
       setKnowledgeNetworkEnabled: (enabled) => set({ knowledgeNetworkEnabled: enabled }),
       setContributeKnowledge: (enabled) => set({ contributeKnowledge: enabled }),
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
+      setDisclaimerAccepted: (accepted) => set({ disclaimerAccepted: accepted }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -94,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
         knowledgeNetworkEnabled: state.knowledgeNetworkEnabled,
         contributeKnowledge: state.contributeKnowledge,
         claudeApiKey: state.claudeApiKey,
+        disclaimerAccepted: state.disclaimerAccepted,
       }),
     }
   )

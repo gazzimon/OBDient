@@ -1,11 +1,16 @@
 // Queries the NHTSA vPIC public API to decode a VIN into make / model / year.
-// No API key required. Covers vehicles manufactured in US, Mexico, and Canada.
+// No API key required — this is the app's VIN decoder (audit C2: replaced the
+// keyed Vincario datasource, whose API_KEY + SECRET were embedded in the bundle).
+// Coverage is strongest for US/MX/CA-market vehicles; it still resolves make from
+// the WMI for many global VINs, but is weaker than Vincario for MERCOSUR cars.
 // Endpoint: https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/{VIN}?format=json
 
 export interface VehicleInfo {
   make: string;
-  model: string;
+  model: string | null;
   year: number | null;
+  manufacturer: string | null;
+  plantCountry: string | null;
 }
 
 interface NhtsaResult {
@@ -42,14 +47,18 @@ export async function fetchVehicleInfoByVin(vin: string): Promise<VehicleInfo | 
   const make  = get('Make');
   const model = get('Model');
   const yearStr = get('Model Year');
+  const manufacturer = get('Manufacturer Name');
+  const plantCountry = get('Plant Country');
 
   // NHTSA returns empty strings or "0" for unknown fields
-  if (!make || make === '0' || !model || model === '0') return null;
+  if (!make || make === '0') return null;
 
   return {
     make:  toTitleCase(make),
-    model: toTitleCase(model),
+    model: model && model !== '0' ? toTitleCase(model) : null,
     year:  yearStr && yearStr !== '0' ? parseInt(yearStr, 10) : null,
+    manufacturer: manufacturer && manufacturer !== '0' ? manufacturer : null,
+    plantCountry: plantCountry && plantCountry !== '0' ? plantCountry : null,
   };
 }
 

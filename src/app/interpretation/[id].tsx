@@ -8,6 +8,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { container } from '@/data/container';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCodeCard';
+import { DisclaimerNote } from '@/presentation/components/feedback/Disclaimer';
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
 import type { ObdParameter } from '@/domain/entities/obd-parameter';
 import type { ChatMessage } from '@/domain/entities/chat-message';
@@ -145,6 +146,9 @@ export default function InterpretationScreen() {
                 </View>
               </View>
             )}
+
+            {/* Persistent informational-use notice (audit I1) */}
+            <DisclaimerNote className="mt-8 px-2" />
           </>
         )}
       </ScrollView>

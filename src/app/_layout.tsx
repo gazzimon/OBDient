@@ -9,6 +9,7 @@ import {
   IBMPlexMono_700Bold,
 } from '@expo-google-fonts/ibm-plex-mono';
 import { BluetoothProvider } from '@/presentation/providers/BluetoothProvider';
+import { DisclaimerGate } from '@/presentation/components/feedback/Disclaimer';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -31,6 +32,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: '#0D0D0D' },
         }}
       />
+      <DisclaimerGate />
     </BluetoothProvider>
   );
 }

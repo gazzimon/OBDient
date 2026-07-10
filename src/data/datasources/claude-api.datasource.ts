@@ -29,9 +29,8 @@ type TextBlock = {
 
 export class ClaudeAPIDataSource {
   isConfigured(): boolean {
-    const runtimeKey = useSettingsStore.getState().claudeApiKey ?? '';
-    const envKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
-    return runtimeKey.trim().length > 0 || envKey.trim().length > 0;
+    // Only the runtime key counts: the app ships with NO embedded key (audit C1).
+    return (useSettingsStore.getState().claudeApiKey ?? '').trim().length > 0;
   }
 
   // Senior conversation mode (ADR-0009 §3): receives the whole thread — first
@@ -82,10 +81,10 @@ export class ClaudeAPIDataSource {
   }
 
   private getKey(): string {
-    // Runtime key (Settings UI) takes priority over the build-time env var.
-    const runtimeKey = useSettingsStore.getState().claudeApiKey ?? '';
-    const envKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
-    const key = runtimeKey.trim() || envKey.trim();
+    // User-supplied at runtime (Settings → Claude AI) and stored only on-device.
+    // There is deliberately NO EXPO_PUBLIC_* fallback: an env key would be inlined
+    // by Metro into the public JS bundle and extractable from the APK (audit C1).
+    const key = (useSettingsStore.getState().claudeApiKey ?? '').trim();
     if (!key) throw new Error('Claude API key not configured. Add it in Settings → Claude AI.');
     return key;
   }
