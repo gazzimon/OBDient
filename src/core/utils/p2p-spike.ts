@@ -24,6 +24,16 @@ interface SpikeMsg {
   err?: string;
 }
 
+// The spike protocol is pure-ASCII JSON, so a byte-wise decode is exact and
+// avoids TextDecoder (not guaranteed on Hermes) and b4a (untyped) on the RN side.
+function bytesToString(data: unknown): string {
+  if (typeof data === 'string') return data;
+  const arr = data as Uint8Array;
+  let s = '';
+  for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]!);
+  return s;
+}
+
 const STEP_TIMEOUT_MS = 15_000;
 
 export async function runP2PSpike(): Promise<string> {
@@ -31,14 +41,16 @@ export async function runP2PSpike(): Promise<string> {
   const worklet = new Worklet();
 
   try {
-    await worklet.start('/harvest-worklet.bundle', bundle);
+    // start() is synchronous (void) — readiness is signaled by the worklet's
+    // own 'ready' IPC message, which we await below.
+    worklet.start('/harvest-worklet.bundle', bundle);
     const { IPC } = worklet;
 
     let buffer = '';
     const waiters = new Map<string, (msg: SpikeMsg) => void>();
 
     IPC.on('data', (data) => {
-      buffer += new TextDecoder().decode(data as Uint8Array);
+      buffer += bytesToString(data);
       let idx: number;
       while ((idx = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, idx);

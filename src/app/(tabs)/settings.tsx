@@ -17,6 +17,7 @@ import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionS
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
+import { runP2PSpike } from '@/core/utils/p2p-spike';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -71,6 +72,23 @@ export default function SettingsScreen() {
 
   const [peerCount, setPeerCount]         = useState(0);
   const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
+
+  // C0 spike (PLAN-002 v2): probes Hypercore/Hyperswarm inside the Bare worklet.
+  const [spikeRunning, setSpikeRunning] = useState(false);
+  const [spikeReport, setSpikeReport]   = useState<string | null>(null);
+
+  const handleRunSpike = async () => {
+    if (spikeRunning) return;
+    setSpikeRunning(true);
+    setSpikeReport(null);
+    try {
+      setSpikeReport(await runP2PSpike());
+    } catch (err) {
+      setSpikeReport(`spike crashed: ${String(err instanceof Error ? err.message : err)}`);
+    } finally {
+      setSpikeRunning(false);
+    }
+  };
 
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
@@ -442,6 +460,34 @@ export default function SettingsScreen() {
                 </View>
               )}
             </>
+          )}
+        </View>
+
+        {/* C0 spike — P2P engine probe (Bare worklet). Independent of the
+            Distributed RAG toggle: it tests the substrate, not the feature. */}
+        <View className="bg-brand-surface rounded-2xl p-4 mb-6">
+          <View className="mb-3">
+            <Text className="text-brand-text font-mono text-sm">P2P engine test (C0)</Text>
+            <Text className="text-brand-muted font-mono text-xs mt-0.5">
+              Runs Hypercore + Hyperswarm inside the Bare worklet on this device
+            </Text>
+          </View>
+          <PillButton
+            label={spikeRunning ? 'Running…' : 'Run spike'}
+            onPress={handleRunSpike}
+            loading={spikeRunning}
+          />
+          {spikeReport != null && (
+            <Text
+              className={`font-mono text-xs mt-3 ${
+                spikeReport.includes('FAIL') || spikeReport.includes('crashed') || spikeReport.includes('aborted')
+                  ? 'text-brand-red'
+                  : 'text-brand-teal'
+              }`}
+              selectable
+            >
+              {spikeReport}
+            </Text>
           )}
         </View>
 
