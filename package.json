@@ -11,6 +11,7 @@
     "expo": "~56.0.9",
     "expo-build-properties": "~56.0.19",
     "expo-dev-client": "~56.0.19",
+    "expo-file-system": "~56.0.8",
     "expo-font": "~56.0.6",
     "expo-linking": "~56.0.14",
     "expo-router": "~56.2.9",
@@ -57,7 +58,14 @@
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "p2p:pack": "bare-pack --target android --target ios --linked --out p2p/harvest-worklet.bundle.mjs p2p/harvest-worklet.mjs",
+    "seed": "node tools/seed-peer/index.mjs",
+    "seed:harvest": "node tools/seed-peer/harvest.mjs",
+    "seed:test": "node tools/seed-peer/test-replication.mjs"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "react-dom": "19.2.3"
+  }
 }
