@@ -148,11 +148,44 @@ Later (need careful keyword design or hardware):
 ================================================================================
 
 **No runtime server.** The only central piece is a build-time publisher/harvester
-(ADR-0002). Collection ladder: (a) opt-in manual export of `corrections.jsonl` —
-enough for now; (b) thin ingest endpoint → object storage, only if volume demands;
-(c) P2P seed (ADR-0003) — later. Never "all conversations": only anonymized,
-gate-passed case pairs; filtered at the edge; no VIN / BT address / identity
-(same contract as ADR-0002/0003).
+(ADR-0002). Never "all conversations": only anonymized, gate-passed case pairs;
+filtered at the edge; no VIN / BT address / identity (same contract as
+ADR-0002/0003).
+
+**Transport decision (2026-07-10): P2P seed peer (option C) now; senior proxy
+(option D) as phase 2, only after C is built.** Rationale — the repo is closer to
+C than documented: `react-native-bare-kit` + `bare-pack` are already dependencies
+(the QVAC worker runs on a Bare worklet), `hypercore`/`hyperswarm` are real deps,
+and the "stub" is only a Metro resolver redirect because **Hermes** lacks Node
+built-ins — exactly what the Bare worklet provides. The datasource
+(`hypercore-knowledge.datasource.ts`) is complete; it lacks a runtime, not code.
+Option D (a proxy in front of the senior) is deferred: BYOK already solved key
+security (audit C1), so D only makes sense with a subsidized/B2B product model.
+
+**C-track milestones (harvest transport):**
+- **C0 — Spike: Hypercore inside the Bare worklet.** A minimal second worklet
+  (own bundle via `bare-pack`, launched with `react-native-bare-kit`) that opens
+  a Hypercore, appends a block, reads it back, reports over IPC. THE technical
+  risk of the whole track (native addons — udx/sodium — inside bare-kit on
+  Android; Keet mobile proves the stack works). Everything else is plumbing.
+- **C1 — `CaseChunk` + local feed as outbox.** New chunk type in
+  `distributed-chunk.ts` carrying the corrections pair
+  `{case_id: sha256(content), brief, senior_answer, gate, outcome?}`. The local
+  append-only feed IS the outbox — store-and-forward is built into Hypercore;
+  replication happens whenever the seed is reachable. Opt-in toggle, redacted
+  brief only.
+- **C2 — Worklet IPC bridge.** `hypercore-knowledge.datasource.ts` talks to the
+  worklet over RPC instead of importing hypercore directly (Metro stub path
+  retired); graceful degradation preserved (worklet dead → today's behavior).
+- **C3 — Seed peer.** `tools/seed-peer/` — plain Node, runs on a PC/VPS. Joins
+  the harvest topic, replicates contributor feeds read-only, persists, exports
+  deduped `corrections.jsonl` (ADR-0002 F1 format). Testable on desktop today.
+- **C4 — Topic separation.** Case harvest uses its own DHT topic
+  (`obdient-harvest-v1`), separate from the knowledge-sharing topic
+  (`obdient-rag-v1`): peers don't need each other's raw cases (knowledge flows
+  down via the curated bundle, ADR-0002) — data minimization by construction.
+- **D (phase 2, after C ships).** Senior proxy: harvest + senior call share one
+  gateway; unlocks subsidized/B2B billing. Not before C works end-to-end.
 
 **Trust basis without user thumbs.** The senior→junior direction is standard
 teacher→student distillation — NOT the Claude-validates-Claude closed loop (that

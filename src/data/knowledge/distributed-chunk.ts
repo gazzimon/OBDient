@@ -80,15 +80,48 @@ export interface SkosPatch {
 }
 
 // ---------------------------------------------------------------------------
+// Layer 4 — Harvest case pair (PLAN-002 v2 C1, ADR-0002 corrections.jsonl)
+// ---------------------------------------------------------------------------
+
+// One validated diagnostic case: redacted brief → gate-checked senior answer
+// (+ outcome when the user provided it). Flows on its OWN swarm topic
+// (HARVEST_TOPIC) replicated only by the seed peer — never on the knowledge
+// topic: peers get curated knowledge via the signed bundle (ADR-0002), not
+// each other's raw cases (data minimization by construction).
+export interface CaseChunk {
+  type: 'case';
+  /** sha256 of (briefJson + seniorAnswer) — content-addressed dedup key. */
+  id: string;
+  /** Redacted DiagnosticBrief JSON — no VIN by construction (redact.ts). */
+  brief: Record<string, unknown>;
+  seniorAnswer: string;
+  /** Verdict of the deterministic gate (diagnostic-gate.ts) at capture time.
+   *  Only gate-passed cases should be contributed; the seed re-checks. */
+  gate: {
+    passed: boolean;
+    violations: { rule: string; weight: 'hard' | 'soft'; detail: string }[];
+  };
+  /** UX4 outcome if the user had already answered when the case was contributed. */
+  outcome?: 'yes' | 'no' | 'pending' | null;
+  appVersion?: string;
+  createdAt: string;
+}
+
+// Wire contract: DHT topic for case harvest (seed peer only). Padded to the
+// 32-byte topic buffer by the transport, same convention as obdient-rag-v1.
+export const HARVEST_TOPIC = 'obdient-harvest-v1';
+
+// ---------------------------------------------------------------------------
 // Union type
 // ---------------------------------------------------------------------------
 
-export type DistributedChunk = FactChunk | PatternChunk | SkosPatch;
+export type DistributedChunk = FactChunk | PatternChunk | SkosPatch | CaseChunk;
 
 // Type guards
 export const isFactChunk    = (c: DistributedChunk): c is FactChunk    => c.type === 'fact';
 export const isPatternChunk = (c: DistributedChunk): c is PatternChunk => c.type === 'pattern';
 export const isSkosPatch    = (c: DistributedChunk): c is SkosPatch    => c.type === 'skos-patch';
+export const isCaseChunk    = (c: DistributedChunk): c is CaseChunk    => c.type === 'case';
 
 // Minimum confirmations required per layer before the chunk is acted upon
 export const QUORUM = {
