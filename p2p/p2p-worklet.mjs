@@ -42,9 +42,15 @@ const { IPC } = BareKit;
 const HARVEST_TOPIC = b4a.from('obdient-harvest-v1'.padEnd(32, '\0').slice(0, 32), 'utf8');
 const RAG_TOPIC = b4a.from('obdient-rag-v1'.padEnd(32, '\0').slice(0, 32), 'utf8');
 
-const HARVEST_DIR = path.join(os.homedir(), 'obdient-harvest-feed');
-const KNOWLEDGE_DIR = path.join(os.homedir(), 'obdient-knowledge-feed');
-const KNOWLEDGE_REMOTE_DIR = path.join(os.tmpdir(), 'obdient-knowledge-remote');
+// Fallback dirs only. The RN side passes the real PERSISTENT path on `open`
+// (see worklet-host.persistentFeedDir): bare-os homedir() is `/data` on Android
+// — not app-writable → ENOENT. tmpdir() is the app sandbox tmp (writable; the
+// C0 spike proved it) so a missing dir degrades to ephemeral, never a crash.
+const HARVEST_DIR = path.join(os.tmpdir(), 'obdient-harvest-feed');
+const KNOWLEDGE_DIR = path.join(os.tmpdir(), 'obdient-knowledge-feed');
+// Ephemeral read-only replicas of peers' feeds — flat, one dir per peer under
+// the writable sandbox tmp; removed on disconnect.
+const KNOWLEDGE_REMOTE_PREFIX = 'obd-kremote-';
 const SPIKE_DIR = path.join(os.tmpdir(), 'obdient-harvest-spike');
 
 const KEY_BYTES = 32;
@@ -168,9 +174,9 @@ const knowledgeRemoteFeeds = new RemoteFeedManager(MAX_REMOTE_FEEDS, (p) => {
   fs.promises.rm(p, { recursive: true, force: true }).catch(() => {});
 });
 
-async function openKnowledge(joinSwarm) {
+async function openKnowledge(dir, joinSwarm) {
   if (knowledgeFeed === null) {
-    knowledgeFeed = new Hypercore(KNOWLEDGE_DIR);
+    knowledgeFeed = new Hypercore(dir || KNOWLEDGE_DIR);
     await knowledgeFeed.ready();
     await loadLocalKnowledge();
   }
@@ -217,7 +223,7 @@ async function handleKnowledgePeer(socket) {
     // Reuse this peer's feed across reconnects; open a NEW read-only replica of
     // the peer's key otherwise (null when the concurrent-feed cap is hit).
     const acquired = knowledgeRemoteFeeds.acquire(peerId, () => {
-      const p = path.join(KNOWLEDGE_REMOTE_DIR, peerId);
+      const p = path.join(os.tmpdir(), `${KNOWLEDGE_REMOTE_PREFIX}${peerId}`);
       return { feed: new Hypercore(p, remoteKey), path: p };
     });
 
@@ -337,7 +343,7 @@ const HANDLERS = {
     'spike-swarm': { step: 'swarm',  fn: () => spikeSwarm() },
   },
   knowledge: {
-    'open':       { step: 'open',   fn: (m) => openKnowledge(m.swarm === true) },
+    'open':       { step: 'open',   fn: (m) => openKnowledge(m.dir, m.swarm === true) },
     'contribute': { step: 'append', fn: (m) => contributeKnowledge(m) },
     'status':     { step: 'status', fn: () => Promise.resolve(knowledgeStatusBody()) },
     'close':      { step: 'close',  fn: () => closeKnowledge() },

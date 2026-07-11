@@ -17,7 +17,7 @@
 // the IPC protocol.
 
 import { useSettingsStore } from '@/store/settingsStore';
-import { workletHost, type WorkletReply } from '@/data/datasources/worklet-host';
+import { workletHost, persistentFeedDir, type WorkletReply } from '@/data/datasources/worklet-host';
 import {
   getLatestBriefBySession,
   getGatedSeniorTurn,
@@ -36,12 +36,14 @@ export class HarvestOutboxDataSource {
   private openPromise: Promise<void> | null = null;
 
   // Open the persistent feed and join the harvest swarm (client) exactly once.
-  // Storage dir is chosen by the worklet (bare-os homedir).
+  // The RN side passes a writable, persistent storage dir (bare-os homedir is
+  // not app-writable on Android — see worklet-host.persistentFeedDir).
   private ensureOpened(): Promise<void> {
     if (this.openPromise !== null) return this.openPromise;
 
     this.openPromise = (async () => {
-      const r = await workletHost.request('harvest', 'open', { swarm: true }, 'open');
+      const dir = persistentFeedDir('obdient-harvest-feed');
+      const r = await workletHost.request('harvest', 'open', { swarm: true, dir }, 'open');
       if (!r.ok) throw new Error((r.err as string) ?? 'open failed');
       console.log(`[Harvest] outbox feed ${String(r.key).slice(0, 16)}… (${r.length} blocks)`);
     })().catch((err) => {

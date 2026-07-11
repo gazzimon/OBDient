@@ -26,7 +26,12 @@ import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-r
 void (async () => {
   const { knowledgeNetworkEnabled } = useSettingsStore.getState();
   await hypercoreKnowledge.initialize({ enabled: knowledgeNetworkEnabled });
-})();
+})().catch((err) => {
+  // The knowledge network is an optional feature — a failed init (e.g. the
+  // worklet couldn't open its feed) must never surface as an uncaught rejection
+  // or block app startup. Log and carry on; the app degrades to local-only RAG.
+  console.warn('[Knowledge] init failed:', err);
+});
 
 const obdRepo    = new OBDRepositoryImpl();
 const llmRepo    = new LLMRepositoryImpl();

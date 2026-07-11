@@ -27,7 +27,7 @@ import type { DistributedChunk, FactChunk, PatternChunk } from '@/data/knowledge
 import { isFactChunk, isPatternChunk, isSkosPatch, QUORUM } from '@/data/knowledge/distributed-chunk';
 import { upsertById } from '@/core/utils/collections';
 import { trustRegistry } from './trust-registry';
-import { workletHost } from './worklet-host';
+import { workletHost, persistentFeedDir } from './worklet-host';
 
 // Re-export FactChunk as KnowledgeChunk for backwards compatibility with
 // knowledge-extractor.ts and sessionStore.ts.
@@ -42,8 +42,9 @@ export class HypercoreKnowledgeSource {
   private _peers = 0;
   private _subscribed = false;
 
-  // storagePath is accepted for API compatibility but ignored — the worklet
-  // owns storage (bare-os homedir). The RN side never touched the disk anyway.
+  // storagePath overrides the default persistent dir (mainly for tests); the RN
+  // side computes a writable, persistent path and passes it to the worklet,
+  // because bare-os homedir() is not app-writable on Android (see worklet-host).
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
     if (!opts.enabled) return;
     if (this._ready) return;
@@ -52,7 +53,8 @@ export class HypercoreKnowledgeSource {
     // feed replay (pushed during the open handler) is not missed.
     this._subscribe();
 
-    const r = await workletHost.request('knowledge', 'open', { swarm: true }, 'open');
+    const dir = opts.storagePath ?? persistentFeedDir('obdient-knowledge-feed');
+    const r = await workletHost.request('knowledge', 'open', { swarm: true, dir }, 'open');
     if (!r.ok) throw new Error((r.err as string) ?? 'knowledge open failed');
     console.log(`[Knowledge] feed ${String(r.key).slice(0, 16)}… (${r.length} blocks)`);
     this._ready = true;
