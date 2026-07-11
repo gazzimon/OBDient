@@ -27,7 +27,9 @@ import * as FileSystem from 'expo-file-system';
 import { shimiTree } from '@/data/knowledge/shimi-tree';
 import type { DistributedChunk, FactChunk, PatternChunk } from '@/data/knowledge/distributed-chunk';
 import { isFactChunk, isPatternChunk, isSkosPatch, QUORUM } from '@/data/knowledge/distributed-chunk';
+import { upsertById } from '@/core/utils/collections';
 import { trustRegistry } from './trust-registry';
+import { RemoteFeedManager } from './remote-feed-manager';
 
 // Re-export FactChunk as KnowledgeChunk for backwards compatibility with
 // knowledge-extractor.ts and sessionStore.ts.
@@ -41,17 +43,32 @@ const SWARM_TOPIC = b4a.from(
   'utf8',
 );
 
+// Cap on concurrently-open remote feeds. Beyond it, new peers are served local
+// replication only — bounds RAM / file descriptors / disk under peer churn (P0).
+const MAX_REMOTE_FEEDS = 32;
+
+// Reject remote blocks larger than this before JSON.parse — a hostile peer must
+// not be able to force a giant string allocation on ingest (P1 hardening).
+const MAX_CHUNK_BYTES = 64 * 1024;
+
 export class HypercoreKnowledgeSource {
   private swarm: InstanceType<typeof Hyperswarm> | null = null;
   private localFeed: InstanceType<typeof Hypercore> | null = null;
-  private remoteFeeds: InstanceType<typeof Hypercore>[] = [];
-  private remoteFeedPaths: string[] = [];
   private chunks: FactChunk[] = [];
   private patterns: PatternChunk[] = [];
   private _ready = false;
-  // Maps remoteFeed index → peerId (first 16 hex chars of remote public key)
-  private feedPeerIds: Map<number, string> = new Map();
-  private feedIndex = 0;
+
+  // One feed per peer, reused across reconnects and closed on disconnect, with
+  // a hard cap on concurrency. Replaces the old grow-only arrays that leaked a
+  // fresh feed + temp dir on every 'connection' event (P0).
+  private readonly remoteFeeds = new RemoteFeedManager<InstanceType<typeof Hypercore>>(
+    MAX_REMOTE_FEEDS,
+    (p) => {
+      void FileSystem.deleteAsync(p, { idempotent: true }).catch(() => {
+        // Best-effort cleanup — ignore errors.
+      });
+    },
+  );
 
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
     if (!opts.enabled) return;
@@ -107,32 +124,19 @@ export class HypercoreKnowledgeSource {
     if (this.localFeed == null) return;
     const buf = b4a.from(JSON.stringify(chunk), 'utf8');
     await this.localFeed.append(buf);
-    // Add to in-memory cache immediately.
-    this.chunks.push(chunk);
+    // Add to in-memory cache immediately (upsert: never duplicate on re-append).
+    upsertById(this.chunks, chunk);
   }
 
   async dispose(): Promise<void> {
     await this.swarm?.destroy();
     if (this.localFeed) await this.localFeed.close();
-    for (const feed of this.remoteFeeds) {
-      await feed.close();
-    }
-    // Remove temporary remote feed directories.
-    for (const p of this.remoteFeedPaths) {
-      try {
-        await FileSystem.deleteAsync(p, { idempotent: true });
-      } catch {
-        // Best-effort cleanup — ignore errors.
-      }
-    }
+    // Closes every remote feed and removes its temp directory.
+    await this.remoteFeeds.closeAll();
     this.swarm = null;
     this.localFeed = null;
-    this.remoteFeeds = [];
-    this.remoteFeedPaths = [];
     this.chunks = [];
     this.patterns = [];
-    this.feedPeerIds.clear();
-    this.feedIndex = 0;
     this._ready = false;
   }
 
@@ -146,26 +150,37 @@ export class HypercoreKnowledgeSource {
 
     trustRegistry.recordPublication(peerId);
 
-    // Replicate local feed to/from peer.
+    // Replicate our local feed on THIS socket (a fresh stream per connection).
     if (this.localFeed) {
       const stream = this.localFeed.replicate(true);
       stream.pipe(socket as any).pipe(stream);
     }
 
-    // Remote feed stored in a per-peer subdirectory under the cache directory.
+    // Reuse this peer's remote feed if one is already open (another live socket
+    // / a prior reconnect); otherwise open one under a STABLE per-peer path.
+    // Returns null when the concurrent-feed cap is hit — then we serve local
+    // replication only and skip the remote feed entirely.
     const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
-    const remotePath = `${cacheDir}hc-remote-${peerId}-${this.feedIndex}`;
-    this.remoteFeedPaths.push(remotePath);
+    const acquired = this.remoteFeeds.acquire(peerId, () => {
+      const path = `${cacheDir}hc-remote-${peerId}`;
+      return { feed: new Hypercore(path), path };
+    });
+    if (acquired == null) return;
 
-    const idx = this.feedIndex++;
-    const remoteFeed = new Hypercore(remotePath);
-    await remoteFeed.ready();
+    // Drop this peer's ref when the socket closes; the feed is closed and its
+    // temp dir removed once the last socket for the peer goes away.
+    socket.on('close', () => {
+      void this.remoteFeeds.release(peerId);
+    });
 
-    this.remoteFeeds.push(remoteFeed);
-    this.feedPeerIds.set(idx, peerId);
-    void this._loadFeed(remoteFeed, peerId);
+    // Load existing blocks only for a newly-opened feed — a reused feed is
+    // already in memory, and upsert-by-id makes a re-load harmless anyway.
+    if (acquired.isNew) {
+      await acquired.feed.ready();
+      void this._loadFeed(acquired.feed, peerId);
+    }
 
-    const remoteStream = remoteFeed.replicate(false);
+    const remoteStream = acquired.feed.replicate(false);
     remoteStream.pipe(socket as any).pipe(remoteStream);
   }
 
@@ -179,7 +194,9 @@ export class HypercoreKnowledgeSource {
         ...chunk,
         confidence: trustRegistry.weightedConfidence(chunk.confidence, peerId),
       };
-      this.chunks.push(weighted);
+      // Upsert by id: a peer re-sending a fact (reconnect, feed re-load) must
+      // refresh it in place, never pile up duplicates that skew getChunks (P1).
+      upsertById(this.chunks, weighted);
       shimiTree.applyChunk(weighted);
       // Record confirmation signal when a chunk reaches quorum
       if (weighted.confirmations >= QUORUM.fact) {
@@ -190,12 +207,7 @@ export class HypercoreKnowledgeSource {
         ...chunk,
         confidence: trustRegistry.weightedConfidence(chunk.confidence, peerId),
       };
-      const existing = this.patterns.findIndex((p) => p.id === weighted.id);
-      if (existing >= 0) {
-        this.patterns[existing] = weighted;
-      } else {
-        this.patterns.push(weighted);
-      }
+      upsertById(this.patterns, weighted);
       if (weighted.confirmations >= QUORUM.pattern) {
         trustRegistry.recordConfirmation(peerId);
       }
@@ -214,6 +226,9 @@ export class HypercoreKnowledgeSource {
     for (let i = 0; i < length; i++) {
       try {
         const buf: Buffer = await feed.get(i);
+        // Reject oversized blocks before parsing: an untrusted peer must not be
+        // able to force a giant string allocation on ingest (P1 hardening).
+        if (buf == null || buf.length > MAX_CHUNK_BYTES) continue;
         const chunk: DistributedChunk = JSON.parse(b4a.toString(buf, 'utf8'));
         this._dispatch(chunk, peerId);
       } catch {

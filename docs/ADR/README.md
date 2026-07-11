@@ -40,6 +40,7 @@ consume número de ADR.
 | 0007 | Firma y rotación de claves de los artefactos distribuidos | Propuesto | [0007-firma-y-rotacion-de-claves.md](0007-firma-y-rotacion-de-claves.md) |
 | 0008 | Captura de readiness y freeze frame (Mode 01 PID 01 / Mode 02; Mode 06 fuera) | Propuesto | [0008-readiness-freezeframe-capture.md](0008-readiness-freezeframe-capture.md) |
 | 0009 | Admisión local → handoff senior — el junior entrevista, el senior conduce, la sesión persiste | Propuesto | [0009-admision-local-handoff-senior.md](0009-admision-local-handoff-senior.md) |
+| 0010 | Resiliencia de la capa P2P — ciclo de vida de feeds y deduplicación | Aceptado | [0010-resiliencia-p2p.md](0010-resiliencia-p2p.md) |
 
 ### Documentos de plan relacionados (no son ADRs)
 
@@ -72,7 +73,13 @@ trabajo, no decoración:
   determinístico redactado → conversación senior → persistencia append-only) y modifica
   deliberadamente la premisa "lo diagnóstico no sale del device" del router, con contrato
   de datos explícito (viajan datos del vehículo; nunca VIN ni identidad del usuario).
-- **Numeración al día:** 0001–0009 asignados y redactados; sin huecos. **0006-A** es el
+- ✅ **0010 redactado y aceptado.** [0010-resiliencia-p2p.md](0010-resiliencia-p2p.md)
+  fija la resolución de los defectos de fiabilidad P2P reales (fuga de feeds por
+  reconexión, `FactChunk` sin dedup, ingest sin cota) hallados al verificar una
+  auditoría SRE externa cuyo diagnóstico apuntaba a un firmware ESP32 inexistente.
+  Es el primer ADR con código ya mergeado (`Aceptado`, no `Propuesto`) y endurece
+  la malla de ADR-0003.
+- **Numeración al día:** 0001–0010 asignados y redactados; sin huecos. **0006-A** es el
   primer ADR *satélite*: extiende una decisión existente (0006) en vez de tomar una nueva
   independiente, y por eso hereda su número con sufijo de letra en lugar de consumir 0009.
   La regla de "un número, una vez" se mantiene; el sufijo señala dependencia estructural directa.

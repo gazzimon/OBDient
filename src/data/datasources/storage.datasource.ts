@@ -19,6 +19,7 @@ import {
   type TroubleCodeRow,
   type ConversationTurnRow,
   type OutcomeRow,
+  type BriefRow,
 } from '@/data/db/schema';
 import { DatabaseError } from '@/core/errors/obd.errors';
 

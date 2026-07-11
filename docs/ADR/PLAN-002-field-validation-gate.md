@@ -185,12 +185,20 @@ security (audit C1), so D only makes sense with a subsidized/B2B product model.
   "Value is undefined, expected an Object" asynchronously inside streamx and
   the command never reaches the worklet (`stringToBytes` added in
   `p2p-spike.ts`). Everything else is plumbing.
-- **C1 — `CaseChunk` + local feed as outbox.** New chunk type in
-  `distributed-chunk.ts` carrying the corrections pair
-  `{case_id: sha256(content), brief, senior_answer, gate, outcome?}`. The local
-  append-only feed IS the outbox — store-and-forward is built into Hypercore;
-  replication happens whenever the seed is reachable. Opt-in toggle, redacted
-  brief only.
+- **C1 — `CaseChunk` + local feed as outbox. ✅ BUILT (2026-07-10).** The
+  harvest worklet (`p2p/harvest-worklet.mjs`) owns the device's persistent
+  append-only feed (the feed IS the outbox — store-and-forward is Hypercore's)
+  and computes the content id (`sha256(JSON.stringify(brief)+seniorAnswer)` via
+  `bare-crypto` — the hub re-checks the same recipe). RN side:
+  `harvest-outbox.datasource.ts` (worklet lifecycle + IPC, fire-and-forget).
+  **Admission valve:** only a GATE-PASSED senior diagnosis is contributed
+  (`diagnostic-intake-session.ts` → `HarvestPort`, wired in `container.ts`);
+  junior diagnoses never distill. **Outcome enrichment:** `saveOutcome`
+  re-appends the same case with the UX4 outcome — same id, the hub merges.
+  Consent: a dedicated `contributeCases` toggle (default OFF, separate from
+  Distributed RAG), checked at contribution time. Brief redacted by
+  construction. Tests: admission valve (pass→1 case, fail→0, junior→0) + the
+  seed's ingest/merge suite already covers the hub side.
 - **C2 — Worklet IPC bridge.** `hypercore-knowledge.datasource.ts` talks to the
   worklet over RPC instead of importing hypercore directly (Metro stub path
   retired); graceful degradation preserved (worklet dead → today's behavior).

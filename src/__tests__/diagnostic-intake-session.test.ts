@@ -539,3 +539,58 @@ describe('deterministic gate on diagnosis turns (PLAN-002 v2 N2)', () => {
     expect(log.turns.filter((t) => t.gate != null)).toHaveLength(1);
   });
 });
+
+describe('harvest admission valve (PLAN-002 v2 C1)', () => {
+  const codes = [dtc('P0335')];
+
+  function fakeHarvest() {
+    const cases: { brief: unknown; seniorAnswer: string; gate: { passed: boolean } }[] = [];
+    return {
+      cases,
+      contributeCase(c: { brief: unknown; seniorAnswer: string; gate: { passed: boolean } }) {
+        cases.push(c);
+      },
+    };
+  }
+
+  async function runToSenior(uc: DiagnosticIntakeSessionUseCase) {
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+    return uc.requestSenior('s1', input('', { troubleCodes: codes }));
+  }
+
+  it('a gate-passed senior diagnosis is contributed exactly once', async () => {
+    const harvest = fakeHarvest();
+    const senior = fakeSenior(true, 'P0335 points to the crankshaft position sensor; test its wiring first.');
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog(), null, harvest);
+
+    const res = await runToSenior(uc);
+    expect(res.gate?.passed).toBe(true);
+    expect(harvest.cases).toHaveLength(1);
+    expect(harvest.cases[0]?.seniorAnswer).toContain('crankshaft');
+    expect(harvest.cases[0]?.gate.passed).toBe(true);
+  });
+
+  it('a gate-failed senior diagnosis is NOT contributed (valve holds)', async () => {
+    const harvest = fakeHarvest();
+    const senior = fakeSenior(true, 'Replace the catalytic converter and clear the codes.');
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog(), null, harvest);
+
+    const res = await runToSenior(uc);
+    expect(res.gate?.passed).toBe(false);
+    expect(harvest.cases).toHaveLength(0);
+  });
+
+  it('junior diagnoses never reach the harvest — even when they pass the gate', async () => {
+    const harvest = fakeHarvest();
+    const junior = fakeJunior('P0335 indicates a faulty crankshaft position sensor.');
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog(), null, harvest);
+
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    const res = await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+    expect(res.gate?.passed).toBe(true);  // junior passed…
+    expect(harvest.cases).toHaveLength(0); // …but only senior cases distill
+  });
+});
