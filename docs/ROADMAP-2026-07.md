@@ -22,6 +22,7 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
 | **C1** cosecha | Caso gate-passed → `CaseChunk` al feed local (outbox); enriquecimiento por outcome (mismo id → merge); toggle `contributeCases` | `harvest-outbox.datasource.ts` + válvula de admisión |
 | **C3/C4** seed | Seed peer Node en repo propio; topic de cosecha separado del de conocimiento | `gazzimon/obdient-seed` |
 | **N3(a)** retorno senior | Diagnóstico senior gate-passed → `claudeKnowledge` (capa 0 + vector) → CARpsy lo reusa offline como *unverified*. Cierra el lazo en runtime | `container.ts` + `renderBriefRetrievalKey` + tests |
+| **N4** auditoría | Ring buffer on-device + evento `gate` + panel dev en Settings (TTFT, tok/s, tasa del gate) — medible sin adb | `audit-log.ts`, `AuditPanel.tsx` + tests |
 | **ADR-0010 F0** | Fix auditoría: 1 feed por peer + tope, dedup por id, cota de ingest | `remote-feed-manager.ts`, `collections.ts` + 12 tests |
 
 > La auditoría SRE externa era mayormente ficción (describía un firmware ESP32 que no
@@ -41,11 +42,13 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
   (`renderBriefRetrievalKey`: vehículo + DTC/faultClass + síntomas, sin VIN). CARpsy la
   recupera **offline la próxima vez** como provenance *unverified*. Misma válvula de
   admisión que C1 (solo gate-passed); fire-and-forget. La mitad de *dataset* la cubre C1.
-- **N4 — Superficie de auditoría (instrumentación).** Ring buffer en memoria
-  alimentado por `audit()` + panel dev en Settings (TTFT, tok/s, tokens, verdicts del
-  gate) + badge "on-device · N s" para el usuario. Sin esto **no podemos medir** ni la
-  ganancia de N0, ni la tasa de rechazo del gate, ni la métrica de dependencia
-  (ROADMAP Step 6). Barato, alto apalancamiento para la demo. Riesgo BAJO.
+- **N4 — Superficie de auditoría (instrumentación). ✅ HECHO (2026-07-10).** El ring
+  buffer en memoria (últimos 50, pub/sub) vive en `audit-log.ts` junto al JSONL de
+  logcat; nuevo evento `gate` emitido desde `case-log.datasource` (el dominio queda
+  puro). Panel dev en Settings (`AuditPanel.tsx`): TTFT/tok-s promedio, **tasa de pase
+  del gate** (a/b), y las últimas líneas `[AUDIT]` — todo on-device, sin adb. Ya se
+  puede medir la ganancia de N0 y la tasa del gate. Pendiente menor: badge de latencia
+  por mensaje en el chat (requiere hilar `total_ms` hasta el resultado — follow-up).
 
 ### Fase B — Hacer real el fedRAG en device  *(desbloquea el sustrato ya probado en C0)*
 
@@ -100,6 +103,7 @@ alimentando ya corre: UX4 (outcome) + C1 (cosecha).
 de hardware (F3) y verificar el bootstrap (F2)** → **destilar cuando haya corpus (N5)** y
 hardware/proxy detrás de flags.
 
-Con **N3(a) ya cerrado**, el siguiente paso de mayor ROI es **N4** (superficie de
-auditoría): es lo que vuelve *medible* todo lo construido — la ganancia de N0, la tasa de
-rechazo del gate y la métrica de dependencia de Claude — y es barato.
+Con la **Fase A cerrada** (N3a + N4), el siguiente bloque es la **Fase B**: hacer real el
+fedRAG en device — **C2** (retirar el stub de Metro, enrutar el datasource al worklet por
+IPC) emparejado con **ADR-0010 Fase 1** (ingest continuo con listener de `append`), que
+solo muerde cuando los feeds fluyen en vivo, justo lo que habilita C2.

@@ -5,6 +5,7 @@
 import type { CaseLogPort, TurnRole } from '@/domain/usecases/diagnostic-intake-session';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 import type { GateResult } from '@/domain/services/diagnostic-gate';
+import { audit } from '@/core/utils/audit-log';
 import {
   insertBrief,
   insertConversationTurn,
@@ -13,6 +14,18 @@ import {
 
 export class CaseLogDataSource implements CaseLogPort {
   logTurn(sessionId: string, role: TurnRole, content: string, gate?: GateResult): void {
+    // Instrument the gate verdict (N4) — the data layer is where importing the
+    // audit sink is fine; the domain session stays pure. Only diagnosis turns
+    // (junior/senior) carry a gate.
+    if (gate && (role === 'junior' || role === 'senior')) {
+      audit({
+        event: 'gate',
+        role,
+        passed: gate.passed,
+        hard: gate.violations.filter((v) => v.weight === 'hard').length,
+        soft: gate.violations.filter((v) => v.weight === 'soft').length,
+      });
+    }
     insertConversationTurn({
       sessionId,
       role,

@@ -82,10 +82,13 @@ Gate-as-**filter**, not gate-as-retry: a failing answer is *marked unconfirmed*
   (b) **Distillation harvest. ✅ BUILT** as the C-track (C1 outbox → C3 seed →
   `corrections.jsonl`), superseding the manual-export sketch here.
   Risk MED. **Done.**
-- **N4 — Audit surface.** Ring buffer (~50 records) fed by `audit()` alongside
-  console; dev-only panel in Settings (TTFT, tok/s, tokens, gate verdicts); a
-  minimal user-facing "on-device · N s" badge (UX3 of v1 becomes the gate/latency
-  badge). Risk LOW.
+- **N4 — Audit surface. ✅ BUILT (2026-07-10).** Ring buffer (50 records, pub/sub)
+  in `audit-log.ts` next to the logcat JSONL; new `gate` event emitted from
+  `case-log.datasource` (domain stays pure). Dev panel in Settings
+  (`AuditPanel.tsx`): avg TTFT / tok-s, gate pass rate (a/b), and the recent
+  `[AUDIT]` lines — on-device, no adb. The N0 speed win and the gate rate are now
+  measurable. Minor follow-up: a per-message "on-device · N s" chat badge (needs
+  `total_ms` threaded to the result). Risk LOW.
 - **N5 — Batch distillation (deferred until corpus exists).** ADR-0002 Phase 4:
   `corrections.jsonl` → central fine-tune → `eval-carpsy.js` gate (≥80%, TC-04
   no-hallucination) → GGUF release. The senior's role becomes *data factory for

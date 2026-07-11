@@ -18,6 +18,7 @@ import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
 import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { runP2PSpike } from '@/core/utils/p2p-spike';
+import { AuditPanel } from '@/presentation/components/settings/AuditPanel';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -511,6 +512,10 @@ export default function SettingsScreen() {
             </Text>
           )}
         </View>
+
+        {/* ---------- Audit (dev) ---------- */}
+        <SectionHeader title="Instrumentation" />
+        <AuditPanel />
 
         {/* ---------- About ---------- */}
         <SectionHeader title="About" />
