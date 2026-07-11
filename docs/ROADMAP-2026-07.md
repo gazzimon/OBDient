@@ -24,10 +24,32 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
 | **N3(a)** retorno senior | Diagnóstico senior gate-passed → `claudeKnowledge` (capa 0 + vector) → CARpsy lo reusa offline como *unverified*. Cierra el lazo en runtime | `container.ts` + `renderBriefRetrievalKey` + tests |
 | **N4** auditoría | Ring buffer on-device + evento `gate` + panel dev en Settings (TTFT, tok/s, tasa del gate) — medible sin adb | `audit-log.ts`, `AuditPanel.tsx` + tests |
 | **ADR-0010 F0** | Fix auditoría: 1 feed por peer + tope, dedup por id, cota de ingest | `remote-feed-manager.ts`, `collections.ts` + 12 tests |
+| **C2** fedRAG en device | Datasource de conocimiento enrutado al worklet Bare por IPC (worklet compartido con harvest, `ns`); retirado el stub de Metro; handshake OBDIENT-RAG/1; espejo síncrono en RN + `_dispatch` intacto | `p2p-worklet.mjs`, `worklet-host.ts`, `hypercore-knowledge.datasource.ts` (ADR-0011) |
+| **ADR-0010 F1** ingest continuo | Listener `append` por feed remoto en el worklet → los bloques que llegan en vivo se ingieren en la misma sesión | `p2p-worklet.mjs` `handleKnowledgePeer` + `scripts/knowledge-peer.mjs` |
 
 > La auditoría SRE externa era mayormente ficción (describía un firmware ESP32 que no
 > existe), pero verificarla destapó **defectos reales** de fiabilidad P2P, ya resueltos
 > en la Fase 0. Los follow-ups genuinos quedan abajo (Fase B/C).
+
+### Quality loop — verificación de integración (2026-07-10)
+
+Primer test de extremo a extremo del pipeline de cosecha, device ↔ seed:
+
+- ✅ **Contrato device↔seed blindado.** Nuevo `obdient-seed/test/conformance.test.mjs`
+  reproduce la construcción exacta del `CaseChunk` del worklet y la pasa por el store
+  real: el **id sobrevive el round-trip** `JSON.stringify→parse→stringify` de un brief
+  anidado (el punto de falla silenciosa: un drift haría que el seed rechace todo por
+  `idMismatch`). Enganchado al `npm test` del seed — cualquier drift futuro lo caza.
+- ✅ **Transporte P2P + ingest + merge, probados sobre el DHT real** (contribuidor = el
+  simulador de referencia): `feeds:1 · id-mismatch:0 · merged:1 → 1 record`. Contrato,
+  replicación, merge por outcome y privacidad (`corrections.jsonl` sin VIN/MAC/identidad)
+  confirmados en un run real, no en loopback.
+- ⏳ **Pendiente: la pata de la app real.** El único feed cosechado hoy fue del simulador
+  (evidencia: el `senior_answer` es el string hardcodeado del sim; el brief usa `.vehicle`
+  en vez de `.identity`). Falta confirmar que la **app OBDient** — diagnóstico real → gate
+  → outbox C1 → replicación — contribuye a un feed propio. Runbook: seed limpio +
+  `Contribute cases` ON + un diagnóstico real con handoff senior gate-passed +
+  `npm run harvest`; el record real llevará `brief.identity` y la respuesta real de Claude.
 
 ---
 
@@ -50,19 +72,25 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
   puede medir la ganancia de N0 y la tasa del gate. Pendiente menor: badge de latencia
   por mensaje en el chat (requiere hilar `total_ms` hasta el resultado — follow-up).
 
-### Fase B — Hacer real el fedRAG en device  *(desbloquea el sustrato ya probado en C0)*
+### Fase B — Hacer real el fedRAG en device  ✅ HECHO (2026-07-11)
 
-- **C2 — Puente IPC del worklet (retirar el stub de Metro).**
-  `hypercore-knowledge.datasource.ts` habla hoy contra el stub no-op de
-  `metro.config.js` (Hermes no tiene Node). C0 probó que el worklet Bare corre el stack
-  real; C2 enruta el datasource al worklet por IPC (reusando el patrón de
-  `harvest-outbox`). Habilita compartir/recibir conocimiento P2P en el teléfono, no solo
-  cosechar. Riesgo MED (plomería sobre sustrato probado).
-- **ADR-0010 Fase 1 — Ingest continuo de feeds remotos.** Bug preexistente: `_loadFeed`
-  corre una sola vez al abrir el feed remoto y **no hay listener de `append`**, así que
-  los bloques que llegan por replicación tras la apertura no se ingieren. Solo *muerde*
-  cuando los feeds fluyen en vivo — es decir, exactamente cuando aterriza C2. **Emparejar
-  con C2.** Riesgo MED.
+- **C2 — Puente IPC del worklet. ✅ HECHO.** `hypercore-knowledge.datasource.ts` ya no
+  habla contra el stub no-op de Metro (retirado, junto a `stubs/`): es un cliente IPC del
+  worklet Bare compartido (`worklet-host`, un solo runtime para harvest + conocimiento,
+  multiplexado por `ns`). La replicación real corre en el worklet; el RN mantiene un
+  **espejo en memoria** para que `getChunks`/`getPatterns` sigan síncronos, y `_dispatch`
+  (trust + SHIMI + quorum) queda intacto en Hermes. Handshake OBDIENT-RAG/1 simétrico
+  (corrige un bug latente: el feed remoto se abría sin la clave del peer). Detalle de
+  diseño en **ADR-0011**.
+- **ADR-0010 Fase 1 — Ingest continuo. ✅ HECHO (emparejado con C2).** El worklet registra
+  `remoteFeed.on('append', …)` por feed remoto, así que los bloques que llegan por
+  replicación en vivo se ingieren y se empujan al espejo en la misma sesión. Verificable
+  con `scripts/knowledge-peer.mjs` (Enter → append en caliente).
+
+> **Pendiente de verificación on-device** (no bloquea el merge de código): correr el
+> runbook con `scripts/knowledge-peer.mjs` sobre dos peers reales y confirmar peers ≥1,
+> replicación saliente y el bite de F1. El único test que falla en CI es el de integración
+> que exige un Ollama local (`stack-integration.test.ts`) — independiente de esta pista.
 
 ### Fase C — Endurecer e instrumentar  *(follow-ups de fiabilidad)*
 
@@ -103,7 +131,8 @@ alimentando ya corre: UX4 (outcome) + C1 (cosecha).
 de hardware (F3) y verificar el bootstrap (F2)** → **destilar cuando haya corpus (N5)** y
 hardware/proxy detrás de flags.
 
-Con la **Fase A cerrada** (N3a + N4), el siguiente bloque es la **Fase B**: hacer real el
-fedRAG en device — **C2** (retirar el stub de Metro, enrutar el datasource al worklet por
-IPC) emparejado con **ADR-0010 Fase 1** (ingest continuo con listener de `append`), que
-solo muerde cuando los feeds fluyen en vivo, justo lo que habilita C2.
+Con las **Fases A y B cerradas** (N3a + N4; C2 + ADR-0010 F1), el fedRAG ya corre real en
+device sobre el worklet Bare compartido. El siguiente bloque es la **Fase C**: endurecer el
+camino de hardware (**ADR-0010 F3** — timeout/retry serial de ELM327 bajo carga) y verificar
+el bootstrap del seed (**ADR-0010 F2**). Queda como cola de la Fase B la **verificación
+on-device** del runbook (dos peers reales) — código listo, falta correrlo en el teléfono.

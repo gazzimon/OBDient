@@ -93,11 +93,17 @@ transporte sería el paso siguiente.
 ## Plan por fases
 
 - **Fase 0 — P0 + P1 (este cambio).** Implementado y cubierto por tests. ✅
-- **Fase 1 — Ingest continuo de feeds remotos.** Defecto preexistente detectado al
-  auditar: `_loadFeed` corre una sola vez al abrir el feed remoto (dir temporal
-  vacío), y **no hay listener de `append`**, así que los bloques que llegan por
-  replicación tras la apertura no se ingieren en esa sesión. Fuera del alcance de
-  P0/P1; se aborda por separado para no cambiar semántica de golpe. ⏳
+- **Fase 1 — Ingest continuo de feeds remotos. ✅ Resuelto (2026-07-11, junto a C2).**
+  El defecto (`_loadFeed` corría una sola vez, sin listener de `append`) solo
+  mordía con feeds fluyendo en vivo — es decir, cuando C2 aterrizó el fedRAG real
+  en device. Ahora la replicación vive en el worklet Bare
+  ([`p2p/p2p-worklet.mjs`](../../p2p/p2p-worklet.mjs), `handleKnowledgePeer`):
+  tras cargar los bloques existentes del feed remoto se registra
+  `remoteFeed.on('append', pump)` (des-registrado al cerrar el socket), de modo
+  que cada bloque que llega por replicación tras la apertura se ingiere y se
+  empuja al espejo RN por IPC en la misma sesión. El `pump` está serializado (un
+  cursor + flag `pumping/again`) para que `append` solapados no salten bloques.
+  Verificable con `node scripts/knowledge-peer.mjs` (Enter → append en caliente).
 - **Fase 2 — Verificar bootstrap del seed (ADR-0003).** Confirmar estado real de
   ancla de confianza / snapshot / pinning node. ⏳
 - **Fase 3 — Timeout/retry ELM327.** Revisar política bajo carga. ⏳
@@ -122,10 +128,13 @@ transporte sería el paso siguiente.
   para móvil).
 
 ### Riesgos y mitigaciones
-- **La Fase 1 (ingest continuo) sigue abierta:** hoy el aporte de conocimiento
-  remoto en caliente es limitado. Mitigación: documentado explícitamente arriba;
-  no lo empeora este cambio (el offline-first del snapshot bundleado de ADR-0003 no
-  depende de esta ruta).
+- ~~**La Fase 1 (ingest continuo) sigue abierta.**~~ Cerrada el 2026-07-11 junto a
+  C2 (ver Plan por fases): el listener de `append` en el worklet ingiere los
+  bloques que llegan en caliente. La lógica de ciclo de vida de feeds remotos
+  (P0) migró al worklet como copia ESM ([`p2p/remote-feed-manager.mjs`](../../p2p/remote-feed-manager.mjs));
+  [`remote-feed-manager.ts`](../../src/data/datasources/remote-feed-manager.ts) y
+  sus 12 tests quedan como el **spec probado** que esa copia refleja (bare-pack no
+  bundlea TS).
 - **La cota de 64 KiB es post-materialización:** mitiga la asignación de parseo,
   no la de `feed.get`. Aceptable como primer corte; el blindaje pleno es trabajo de
   transporte.

@@ -1,35 +1,33 @@
-// Distributed RAG layer via Hypercore + Hyperswarm.
+// Distributed RAG layer via Hypercore + Hyperswarm — RN side (PLAN-002 v2 C2).
 //
-// Each OBDient instance maintains a local Hypercore feed (append-only log) of
-// anonymised diagnostic knowledge chunks. Instances discover each other through
-// Hyperswarm using a shared topic derived from the app name, and replicate feeds
-// in read-only mode from peers.
+// The feed, the swarm and the real replication now live in the Bare worklet
+// (p2p/p2p-worklet.mjs, ns:'knowledge'); Hermes has no Node built-ins, so this
+// file no longer imports hypercore/hyperswarm (the Metro stub is retired). It
+// is an IPC client that keeps an in-memory MIRROR of the knowledge the worklet
+// ingests, so the hot-path reads stay synchronous:
 //
-// Privacy contract:
-//   - Chunks NEVER include VIN, device address, or any user identifier.
-//   - Only DTCs, make, year range, and anonymised content are shared.
-//   - Contributing is opt-in (double toggle in Settings).
+//   - getChunks(dtc?) / getPatterns()  → sync, read the mirror (llm.repository
+//     calls these mid-prompt-assembly; an IPC round-trip per read is a non-
+//     starter).
+//   - the worklet pushes every ingested block up as a `chunk` event; _dispatch
+//     applies trust weighting (trustRegistry) + SHIMI + quorum HERE, where the
+//     MMKV-backed singletons live. That split is deliberate: transport in Bare,
+//     knowledge semantics in Hermes.
 //
-// Lifecycle:
-//   1. initialize() — open or create local feed, join swarm if enabled.
-//   2. getChunks(dtc?) — query in-memory chunks from all replicated feeds.
-//   3. contribute(chunk) — append an anonymous chunk to the local feed.
-//   4. peerCount() — how many peers are currently connected.
-//   5. dispose() — leave swarm and close all feeds.
+// Privacy contract (unchanged): chunks NEVER include VIN, device address, or any
+// user identifier — only DTCs, make, year range, anonymised content. Contributing
+// is opt-in (double toggle in Settings).
 //
-// NOTE: Hypercore v11 is fully async/await — no callback-based ready(),
-// append(), get(), update(), or close(). All methods return Promises.
+// Continuous ingest (ADR-0010 F1) is the worklet's job: it registers an `append`
+// listener per remote feed, so blocks that arrive by live replication after a
+// connection opens are ingested and pushed up in the same session.
 
-import Hypercore from 'hypercore';
-import Hyperswarm from 'hyperswarm';
-import b4a from 'b4a';
-import * as FileSystem from 'expo-file-system';
 import { shimiTree } from '@/data/knowledge/shimi-tree';
 import type { DistributedChunk, FactChunk, PatternChunk } from '@/data/knowledge/distributed-chunk';
 import { isFactChunk, isPatternChunk, isSkosPatch, QUORUM } from '@/data/knowledge/distributed-chunk';
 import { upsertById } from '@/core/utils/collections';
 import { trustRegistry } from './trust-registry';
-import { RemoteFeedManager } from './remote-feed-manager';
+import { workletHost } from './worklet-host';
 
 // Re-export FactChunk as KnowledgeChunk for backwards compatibility with
 // knowledge-extractor.ts and sessionStore.ts.
@@ -37,62 +35,26 @@ export type KnowledgeChunk = FactChunk;
 export { QUORUM as MIN_CONFIRMATIONS_MAP };
 export const MIN_CONFIRMATIONS = QUORUM.fact;
 
-// Stable swarm topic — all OBDient instances rendezvous here.
-const SWARM_TOPIC = b4a.from(
-  'obdient-rag-v1'.padEnd(32, '\0').slice(0, 32),
-  'utf8',
-);
-
-// Cap on concurrently-open remote feeds. Beyond it, new peers are served local
-// replication only — bounds RAM / file descriptors / disk under peer churn (P0).
-const MAX_REMOTE_FEEDS = 32;
-
-// Reject remote blocks larger than this before JSON.parse — a hostile peer must
-// not be able to force a giant string allocation on ingest (P1 hardening).
-const MAX_CHUNK_BYTES = 64 * 1024;
-
 export class HypercoreKnowledgeSource {
-  private swarm: InstanceType<typeof Hyperswarm> | null = null;
-  private localFeed: InstanceType<typeof Hypercore> | null = null;
   private chunks: FactChunk[] = [];
   private patterns: PatternChunk[] = [];
   private _ready = false;
+  private _peers = 0;
+  private _subscribed = false;
 
-  // One feed per peer, reused across reconnects and closed on disconnect, with
-  // a hard cap on concurrency. Replaces the old grow-only arrays that leaked a
-  // fresh feed + temp dir on every 'connection' event (P0).
-  private readonly remoteFeeds = new RemoteFeedManager<InstanceType<typeof Hypercore>>(
-    MAX_REMOTE_FEEDS,
-    (p) => {
-      void FileSystem.deleteAsync(p, { idempotent: true }).catch(() => {
-        // Best-effort cleanup — ignore errors.
-      });
-    },
-  );
-
+  // storagePath is accepted for API compatibility but ignored — the worklet
+  // owns storage (bare-os homedir). The RN side never touched the disk anyway.
   async initialize(opts: { enabled: boolean; storagePath?: string }): Promise<void> {
     if (!opts.enabled) return;
     if (this._ready) return;
 
-    const dir =
-      opts.storagePath ??
-      `${FileSystem.documentDirectory ?? ''}hypercore-knowledge`;
+    // Register the ingest/churn listeners BEFORE opening, so the initial local-
+    // feed replay (pushed during the open handler) is not missed.
+    this._subscribe();
 
-    // Open (or create) the local writer feed.
-    this.localFeed = new Hypercore(`${dir}/local`);
-    await this.localFeed.ready();
-
-    // Load existing local chunks into memory.
-    await this._loadFeed(this.localFeed);
-
-    // Join the swarm for peer discovery and replication.
-    this.swarm = new Hyperswarm();
-    this.swarm.join(SWARM_TOPIC, { server: true, client: true });
-
-    this.swarm.on('connection', (socket: NodeJS.ReadWriteStream) => {
-      void this._onPeer(socket);
-    });
-
+    const r = await workletHost.request('knowledge', 'open', { swarm: true }, 'open');
+    if (!r.ok) throw new Error((r.err as string) ?? 'knowledge open failed');
+    console.log(`[Knowledge] feed ${String(r.key).slice(0, 16)}… (${r.length} blocks)`);
     this._ready = true;
   }
 
@@ -101,11 +63,11 @@ export class HypercoreKnowledgeSource {
   }
 
   peerCount(): number {
-    return this.swarm?.connections?.size ?? 0;
+    return this._peers;
   }
 
-  // Return chunks relevant to a DTC (or all chunks if no DTC given).
-  // Only returns chunks that meet the minimum confirmation threshold.
+  // Return chunks relevant to a DTC (or all chunks if no DTC given). Only
+  // returns chunks that meet the minimum confirmation threshold.
   getChunks(dtc?: string): KnowledgeChunk[] {
     return this.chunks.filter(
       (c) =>
@@ -121,75 +83,55 @@ export class HypercoreKnowledgeSource {
 
   // Append an anonymous knowledge chunk to the local feed (opt-in only).
   async contribute(chunk: FactChunk): Promise<void> {
-    if (this.localFeed == null) return;
-    const buf = b4a.from(JSON.stringify(chunk), 'utf8');
-    await this.localFeed.append(buf);
-    // Add to in-memory cache immediately (upsert: never duplicate on re-append).
+    const r = await workletHost.request('knowledge', 'contribute', { chunk }, 'append');
+    if (!r.ok) throw new Error((r.err as string) ?? 'knowledge contribute failed');
+    // Mirror our own fact immediately (upsert: never duplicate on re-append).
+    // No trust weighting for locally-authored facts — same as before C2; they
+    // stay below quorum until peers confirm, so getChunks won't surface them yet.
     upsertById(this.chunks, chunk);
   }
 
   async dispose(): Promise<void> {
-    await this.swarm?.destroy();
-    if (this.localFeed) await this.localFeed.close();
-    // Closes every remote feed and removes its temp directory.
-    await this.remoteFeeds.closeAll();
-    this.swarm = null;
-    this.localFeed = null;
+    if (this._ready) {
+      await workletHost.request('knowledge', 'close', {}, 'close').catch(() => {
+        // Best-effort — the shared worklet keeps running for harvest.
+      });
+    }
     this.chunks = [];
     this.patterns = [];
+    this._peers = 0;
     this._ready = false;
   }
 
   // --- Private ---
 
-  private async _onPeer(socket: NodeJS.ReadWriteStream & { remotePublicKey?: Buffer }): Promise<void> {
-    // Derive a stable peerId from the remote public key (no raw key stored).
-    const peerId = socket.remotePublicKey
-      ? b4a.toString(socket.remotePublicKey, 'hex').slice(0, 16)
-      : `unknown-${Date.now()}`;
+  private _subscribe(): void {
+    if (this._subscribed) return;
+    this._subscribed = true;
 
-    trustRegistry.recordPublication(peerId);
-
-    // Replicate our local feed on THIS socket (a fresh stream per connection).
-    if (this.localFeed) {
-      const stream = this.localFeed.replicate(true);
-      stream.pipe(socket as any).pipe(stream);
-    }
-
-    // Reuse this peer's remote feed if one is already open (another live socket
-    // / a prior reconnect); otherwise open one under a STABLE per-peer path.
-    // Returns null when the concurrent-feed cap is hit — then we serve local
-    // replication only and skip the remote feed entirely.
-    const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
-    const acquired = this.remoteFeeds.acquire(peerId, () => {
-      const path = `${cacheDir}hc-remote-${peerId}`;
-      return { feed: new Hypercore(path), path };
-    });
-    if (acquired == null) return;
-
-    // Drop this peer's ref when the socket closes; the feed is closed and its
-    // temp dir removed once the last socket for the peer goes away.
-    socket.on('close', () => {
-      void this.remoteFeeds.release(peerId);
+    // Every block the worklet ingests (local replay + live remote replication).
+    workletHost.on('knowledge', 'chunk', (r) => {
+      const chunk = r.chunk as DistributedChunk | undefined;
+      const peerId = (r.peerId as string) ?? 'unknown';
+      if (chunk != null) this._dispatch(chunk, peerId);
     });
 
-    // Load existing blocks only for a newly-opened feed — a reused feed is
-    // already in memory, and upsert-by-id makes a re-load harmless anyway.
-    if (acquired.isNew) {
-      await acquired.feed.ready();
-      void this._loadFeed(acquired.feed, peerId);
-    }
-
-    const remoteStream = acquired.feed.replicate(false);
-    remoteStream.pipe(socket as any).pipe(remoteStream);
+    // Peer churn: keep peerCount() fresh and record publications for trust stats.
+    workletHost.on('knowledge', 'peer', (r) => {
+      if (typeof r.peers === 'number') this._peers = r.peers;
+      if (typeof r.peerId === 'string') trustRegistry.recordPublication(r.peerId);
+    });
   }
 
+  // Apply an ingested chunk to the mirror — trust gate + weighting + SHIMI +
+  // quorum. Unchanged from the pre-C2 datasource; only the source changed
+  // (worklet IPC events instead of a local hypercore feed read).
   private _dispatch(chunk: DistributedChunk, peerId: string): void {
-    // Gate: silenced peers contribute nothing
+    // Gate: silenced peers contribute nothing.
     if (!trustRegistry.isTrusted(peerId)) return;
 
     if (isFactChunk(chunk) && chunk.content) {
-      // Weight confidence by peer reputation before storing
+      // Weight confidence by peer reputation before storing.
       const weighted: FactChunk = {
         ...chunk,
         confidence: trustRegistry.weightedConfidence(chunk.confidence, peerId),
@@ -198,7 +140,7 @@ export class HypercoreKnowledgeSource {
       // refresh it in place, never pile up duplicates that skew getChunks (P1).
       upsertById(this.chunks, weighted);
       shimiTree.applyChunk(weighted);
-      // Record confirmation signal when a chunk reaches quorum
+      // Record confirmation signal when a chunk reaches quorum.
       if (weighted.confirmations >= QUORUM.fact) {
         trustRegistry.recordConfirmation(peerId);
       }
@@ -212,27 +154,9 @@ export class HypercoreKnowledgeSource {
         trustRegistry.recordConfirmation(peerId);
       }
     } else if (isSkosPatch(chunk)) {
-      // Only high-trust peers can influence ontology patches
+      // Only high-trust peers can influence ontology patches.
       if (trustRegistry.scoreFor(peerId) >= 0.7) {
         shimiTree.applySkosPatch(chunk);
-      }
-    }
-  }
-
-  private async _loadFeed(feed: InstanceType<typeof Hypercore>, peerId = 'local'): Promise<void> {
-    await feed.update({ ifAvailable: true });
-    const length: number = feed.length;
-
-    for (let i = 0; i < length; i++) {
-      try {
-        const buf: Buffer = await feed.get(i);
-        // Reject oversized blocks before parsing: an untrusted peer must not be
-        // able to force a giant string allocation on ingest (P1 hardening).
-        if (buf == null || buf.length > MAX_CHUNK_BYTES) continue;
-        const chunk: DistributedChunk = JSON.parse(b4a.toString(buf, 'utf8'));
-        this._dispatch(chunk, peerId);
-      } catch {
-        // Skip malformed chunks.
       }
     }
   }

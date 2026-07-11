@@ -15,6 +15,12 @@
 // It is deliberately transport-agnostic (no hypercore / expo imports): the
 // caller injects a feed factory and a path-cleanup callback, which keeps this
 // pure and unit-testable in plain Node.
+//
+// This module is the unit-tested SPEC for the identical logic that actually
+// runs the on-device knowledge feeds inside the Bare worklet: keep it in sync
+// with p2p/remote-feed-manager.mjs (bare-pack can't bundle TS, so the worklet
+// carries a plain-ESM copy). The RN side no longer imports this after C2 (the
+// worklet owns remote feeds now), but the tests keep the invariants honest.
 
 export interface ClosableFeed {
   close(): Promise<void>;
