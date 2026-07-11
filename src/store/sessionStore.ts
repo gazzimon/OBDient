@@ -8,8 +8,6 @@ import { createSession } from '@/domain/entities/diagnostic-session';
 import type { TroubleCode } from '@/domain/entities/trouble-code';
 import type { ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
 import type { ChatMessage } from '@/domain/entities/chat-message';
-import { extractAndContribute } from '@/data/datasources/knowledge-extractor';
-import { useSettingsStore } from '@/store/settingsStore';
 
 export type InterpretationStatus = 'idle' | 'loading' | 'done' | 'error';
 
@@ -67,18 +65,11 @@ export const useSessionStore = create<SessionState>()((set) => ({
     })),
 
   endSession: (status) =>
-    set((state) => {
-      const closed = state.activeSession
+    set((state) => ({
+      activeSession: state.activeSession
         ? { ...state.activeSession, status, endedAt: new Date() }
-        : null;
-
-      if (closed) {
-        const { contributeKnowledge } = useSettingsStore.getState();
-        void extractAndContribute(closed, { contributeEnabled: contributeKnowledge });
-      }
-
-      return { activeSession: closed };
-    }),
+        : null,
+    })),
 
   addTroubleCode: (code) =>
     set((state) => ({

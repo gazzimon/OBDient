@@ -29,8 +29,7 @@ import { upsertById } from '@/core/utils/collections';
 import { trustRegistry } from './trust-registry';
 import { workletHost, persistentFeedDir } from './worklet-host';
 
-// Re-export FactChunk as KnowledgeChunk for backwards compatibility with
-// knowledge-extractor.ts and sessionStore.ts.
+// Re-export FactChunk under its legacy name, still used by the getChunks read path.
 export type KnowledgeChunk = FactChunk;
 export { QUORUM as MIN_CONFIRMATIONS_MAP };
 export const MIN_CONFIRMATIONS = QUORUM.fact;

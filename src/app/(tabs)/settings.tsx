@@ -68,8 +68,6 @@ export default function SettingsScreen() {
 
   const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
-  const contributeKnowledge     = useSettingsStore((s) => s.contributeKnowledge);
-  const setContributeKnowledge  = useSettingsStore((s) => s.setContributeKnowledge);
   const contributeCases         = useSettingsStore((s) => s.contributeCases);
   const setContributeCases      = useSettingsStore((s) => s.setContributeCases);
 
@@ -420,21 +418,6 @@ export default function SettingsScreen() {
 
           {knowledgeNetworkEnabled && (
             <>
-              <SettingsRow>
-                <View className="flex-1 mr-4">
-                  <Text className="text-brand-text font-mono text-sm">Contribute knowledge</Text>
-                  <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                    Send anonymous DTC patterns to the shared feed (opt-in)
-                  </Text>
-                </View>
-                <Switch
-                  value={contributeKnowledge}
-                  onValueChange={setContributeKnowledge}
-                  trackColor={{ false: '#2A2A2A', true: MINT }}
-                  thumbColor="#FFFFFF"
-                />
-              </SettingsRow>
-
               <View className="flex-row items-center justify-between py-2">
                 <Text className="text-brand-muted font-mono text-xs">Connected peers</Text>
                 <View className={`px-2 py-0.5 rounded-md border ${peerCount > 0 ? 'border-brand-teal' : 'border-brand-muted'}`}>
