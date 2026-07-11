@@ -69,6 +69,8 @@ export default function SettingsScreen() {
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
   const contributeKnowledge     = useSettingsStore((s) => s.contributeKnowledge);
   const setContributeKnowledge  = useSettingsStore((s) => s.setContributeKnowledge);
+  const contributeCases         = useSettingsStore((s) => s.contributeCases);
+  const setContributeCases      = useSettingsStore((s) => s.setContributeCases);
 
   const [peerCount, setPeerCount]         = useState(0);
   const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
@@ -461,6 +463,25 @@ export default function SettingsScreen() {
               )}
             </>
           )}
+        </View>
+
+        {/* C1 — contribute validated cases to the harvest seed (PLAN-002 v2).
+            Separate consent from Distributed RAG: cases are richer than facts. */}
+        <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-4">
+          <SettingsRow>
+            <View className="flex-1 mr-4">
+              <Text className="text-brand-text font-mono text-sm">Contribute cases</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Share validated diagnoses (redacted, no VIN) to improve the next model (opt-in)
+              </Text>
+            </View>
+            <Switch
+              value={contributeCases}
+              onValueChange={setContributeCases}
+              trackColor={{ false: '#2A2A2A', true: MINT }}
+              thumbColor="#FFFFFF"
+            />
+          </SettingsRow>
         </View>
 
         {/* C0 spike — P2P engine probe (Bare worklet). Independent of the

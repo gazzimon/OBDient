@@ -12,6 +12,7 @@ import {
   upsertOutcome,
 } from '@/data/datasources/storage.datasource';
 import { mapTroubleCodeToRow, mapRowToTroubleCode } from '@/data/mappers/dtc.mapper';
+import { harvestOutbox } from '@/data/datasources/harvest-outbox.datasource';
 import { faultClassFor } from '@/domain/services/fault-class';
 import { SessionNotFoundError } from '@/core/errors/obd.errors';
 import type {
@@ -109,6 +110,10 @@ export class ReportRepositoryImpl implements IReportRepository {
       confirmed: outcome.resolved !== 'pending', // yes/no = a real answer
       createdAt: new Date(),
     });
+    // C1: re-append the session's case enriched with the outcome — same
+    // content-addressed id, the hub merges. Fire-and-forget; opt-in gated
+    // inside the datasource.
+    harvestOutbox.contributeOutcome(sessionId, outcome.resolved);
   }
 
   async getSessionById(id: string): Promise<DiagnosticSession | null> {

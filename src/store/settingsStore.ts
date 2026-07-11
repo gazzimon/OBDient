@@ -32,6 +32,10 @@ interface SettingsState {
   knowledgeNetworkEnabled: boolean;
   // Opt-in to contribute anonymous diagnostic chunks to the shared feed.
   contributeKnowledge: boolean;
+  // Opt-in to contribute validated diagnostic cases (redacted brief + gated
+  // senior answer + outcome) to the harvest seed (PLAN-002 v2 C1). Separate
+  // consent from contributeKnowledge: cases are richer than fact chunks.
+  contributeCases: boolean;
   // Anthropic API key for Claude cloud fallback (general questions + quality evaluation).
   claudeApiKey: string | null;
   // Whether the user has acknowledged the informational-use disclaimer (audit I1).
@@ -47,6 +51,7 @@ interface SettingsState {
   setCustomModelSrc: (src: string | null) => void;
   setKnowledgeNetworkEnabled: (enabled: boolean) => void;
   setContributeKnowledge: (enabled: boolean) => void;
+  setContributeCases: (enabled: boolean) => void;
   setClaudeApiKey: (key: string | null) => void;
   setDisclaimerAccepted: (accepted: boolean) => void;
   reset: () => void;
@@ -62,6 +67,7 @@ const DEFAULTS = {
   customModelSrc: null as string | null,
   knowledgeNetworkEnabled: false,
   contributeKnowledge: false,
+  contributeCases: false,
   claudeApiKey: null as string | null,
   disclaimerAccepted: false,
 };
@@ -80,6 +86,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCustomModelSrc: (src) => set({ customModelSrc: src }),
       setKnowledgeNetworkEnabled: (enabled) => set({ knowledgeNetworkEnabled: enabled }),
       setContributeKnowledge: (enabled) => set({ contributeKnowledge: enabled }),
+      setContributeCases: (enabled) => set({ contributeCases: enabled }),
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setDisclaimerAccepted: (accepted) => set({ disclaimerAccepted: accepted }),
 
@@ -99,6 +106,7 @@ export const useSettingsStore = create<SettingsState>()(
         customModelSrc: state.customModelSrc,
         knowledgeNetworkEnabled: state.knowledgeNetworkEnabled,
         contributeKnowledge: state.contributeKnowledge,
+        contributeCases: state.contributeCases,
         claudeApiKey: state.claudeApiKey,
         disclaimerAccepted: state.disclaimerAccepted,
       }),

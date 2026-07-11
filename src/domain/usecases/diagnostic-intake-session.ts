@@ -84,6 +84,17 @@ export interface JuniorChatPort {
   execute(input: ChatWithQVACInput): Promise<MultiAgentChatResult>;
 }
 
+// Harvest outbox (PLAN-002 v2 C1): one validated case pair for the distillation
+// dataset. Fire-and-forget by contract; called ONLY with gate-passed senior
+// answers — the deterministic gate is the admission valve, not the human.
+export interface HarvestPort {
+  contributeCase(c: {
+    brief: DiagnosticBrief;
+    seniorAnswer: string;
+    gate: GateResult;
+  }): void;
+}
+
 // ─── Session state ───────────────────────────────────────────────────────────
 
 // awaiting_senior: the junior already diagnosed from the completed brief; the
@@ -374,6 +385,7 @@ export class DiagnosticIntakeSessionUseCase {
     private readonly senior: SeniorAgentPort,
     private readonly caseLog: CaseLogPort,
     private readonly interviewer: InterviewerPort | null = null,
+    private readonly harvest: HarvestPort | null = null,
   ) {}
 
   async execute(sessionId: string, input: ChatWithQVACInput): Promise<MultiAgentChatResult> {
@@ -630,6 +642,12 @@ export class DiagnosticIntakeSessionUseCase {
         state: brief.vehicleState,
       });
       this.caseLog.logTurn(sessionId, 'senior', reply, gate);
+      // C1 admission valve: only a gate-passed senior diagnosis becomes a
+      // CaseChunk in the harvest outbox (outcome arrives later via UX4 and
+      // merges by content-addressed id at the hub).
+      if (gate.passed) {
+        this.harvest?.contributeCase({ brief, seniorAnswer: reply, gate });
+      }
       return {
         text: reply,
         generatedAt: new Date(),

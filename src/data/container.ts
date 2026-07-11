@@ -16,6 +16,7 @@ import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
 import { DiagnosticIntakeSessionUseCase } from '@/domain/usecases/diagnostic-intake-session';
 import { caseLog } from '@/data/datasources/case-log.datasource';
+import { harvestOutbox } from '@/data/datasources/harvest-outbox.datasource';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 // Initialize Hypercore network conditionally based on persisted user preference.
@@ -59,6 +60,8 @@ export const container = {
     multiAgent,
     seniorAgent,
     caseLog,
+    null,          // InterviewerPort off (template questions — instant and free)
+    harvestOutbox, // C1: gate-passed senior cases → outbox feed (opt-in inside)
   ),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices

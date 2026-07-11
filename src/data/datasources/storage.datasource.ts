@@ -328,6 +328,36 @@ export async function getTurnsBySession(sessionId: string): Promise<Conversation
   }
 }
 
+// Latest brief of a session — the one the senior actually received (C1: its
+// exact briefJson is what the case id was hashed from).
+export async function getLatestBriefBySession(sessionId: string): Promise<BriefRow | null> {
+  try {
+    const rows = getDb()
+      .select()
+      .from(briefsTable)
+      .where(eq(briefsTable.sessionId, sessionId))
+      .all();
+    return rows.length > 0 ? rows[rows.length - 1]! : null;
+  } catch (err) {
+    throw new DatabaseError('Failed to fetch brief', err);
+  }
+}
+
+// The senior's gated diagnosis turn (first senior turn carrying a gate
+// verdict) — the seniorAnswer half of the C1 case pair.
+export async function getGatedSeniorTurn(sessionId: string): Promise<ConversationTurnRow | null> {
+  try {
+    const rows = getDb()
+      .select()
+      .from(conversationTurnsTable)
+      .where(eq(conversationTurnsTable.sessionId, sessionId))
+      .all();
+    return rows.find((t) => t.role === 'senior' && t.gateJson != null) ?? null;
+  } catch (err) {
+    throw new DatabaseError('Failed to fetch gated senior turn', err);
+  }
+}
+
 // ─── PID readings ─────────────────────────────────────────────────────────────
 
 export function insertPidReading(
