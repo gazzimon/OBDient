@@ -6,6 +6,10 @@ routine diagnostics.
 
 This document explains the strategy, what already ships, and the steps left.
 
+> **Execution status:** for the ordered, dependency-aware view of open work as of
+> 2026-07-10 (what's merged, what's next), see [ROADMAP-2026-07.md](ROADMAP-2026-07.md).
+> This file stays the *why* (the learning-loop strategy); that one is the *what next*.
+
 ---
 
 ## The core insight: knowledge ≠ reasoning
