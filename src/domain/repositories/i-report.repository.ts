@@ -18,7 +18,9 @@ export interface ReportListItem {
   readonly endedAt: Date | null;
   readonly dtcCount: number;
   readonly messageCount: number;
-  readonly hasInterpretation: boolean;
+  // Short deterministic header for the list card (stored in the `interpretation`
+  // column). null on legacy rows saved before summaries existed.
+  readonly summary: string | null;
   // Deterministic candidate causes (DTC fault-class labels) offered as chips —
   // empty when the case has no mapped DTCs.
   readonly causeChips: readonly string[];

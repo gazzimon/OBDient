@@ -52,17 +52,29 @@ function SessionCard({
   onSaveOutcome: (resolved: OutcomeResolved, rootCause: string | null) => void;
 }) {
   const resolved = item.outcome?.resolved ?? null;
+  const dateLine = `${item.startedAt.toLocaleDateString()} · ${item.startedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  // The deterministic header; fall back to the date when a legacy row has none.
+  const title = item.summary != null && item.summary !== '—' ? item.summary : null;
 
   return (
     <Pressable
       onPress={onPress}
       className="bg-brand-surface rounded-2xl p-4 mb-3 active:opacity-70"
     >
-      <View className="flex-row items-center justify-between pb-2 mb-3 border-b border-brand-border">
-        <Text className="text-brand-text font-mono-bold text-sm">
-          {item.startedAt.toLocaleDateString()} · {item.startedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
-        <Pressable onPress={onDelete} hitSlop={8} className="active:opacity-60">
+      <View className="flex-row items-start justify-between pb-2 mb-3 border-b border-brand-border">
+        <View className="flex-1 pr-2">
+          {title != null ? (
+            <>
+              <Text className="text-brand-text font-mono-bold text-sm" numberOfLines={1}>
+                {title}
+              </Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">{dateLine}</Text>
+            </>
+          ) : (
+            <Text className="text-brand-text font-mono-bold text-sm">{dateLine}</Text>
+          )}
+        </View>
+        <Pressable onPress={onDelete} hitSlop={8} className="active:opacity-60 pt-0.5">
           <MaterialCommunityIcons name="trash-can-outline" size={18} color={MUTED} />
         </Pressable>
       </View>

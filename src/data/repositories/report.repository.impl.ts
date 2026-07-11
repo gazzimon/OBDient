@@ -92,7 +92,7 @@ export class ReportRepositoryImpl implements IReportRepository {
           endedAt: row.endedAt ? new Date(row.endedAt) : null,
           dtcCount: dtcs.length,
           messageCount,
-          hasInterpretation: row.interpretation != null,
+          summary: row.interpretation ?? null,
           causeChips: causeChipsFor(dtcs),
           outcome,
         } satisfies ReportListItem;

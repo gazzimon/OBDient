@@ -1,4 +1,4 @@
-// Saved session detail: final parameter snapshot, DTCs, and AI interpretation.
+// Saved session detail: final parameter snapshot, DTCs, and the chat history.
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
@@ -98,17 +98,6 @@ export default function InterpretationScreen() {
               {' · '}
               {session.status}
             </Text>
-
-            {session.interpretation != null && (
-              <View className="mb-6">
-                <SectionHeader title="AI Interpretation" />
-                <View className="bg-brand-surface rounded-2xl p-4">
-                  <Text className="text-brand-text font-mono text-sm leading-6">
-                    {session.interpretation}
-                  </Text>
-                </View>
-              </View>
-            )}
 
             <SectionHeader title={`Trouble Codes (${session.troubleCodes.length})`} />
             {session.troubleCodes.length === 0 ? (
