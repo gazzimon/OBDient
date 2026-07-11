@@ -84,13 +84,18 @@ runs locally via the QVAC SDK (~400 MB RAM, works offline).
 
 ### 🤝 Multi-agent by design
 
-A **deterministic router** (no ML, no latency) splits every message across roles:
+A **deterministic state machine** (no ML to route, no added latency) walks every case
+through clear roles:
 
-- **Diagnostician** — CARpsy, on-device, private, offline-capable (DTCs, sensors, faults).
-- **Generalist** — Claude (cloud, opt-in) for open automotive questions; receives
-  make/model/year + the question only — **never** the VIN or raw sensor readings.
-- **Quality-Evaluator** — Claude scores CARpsy's answers in the background and feeds
-  corrections back into SHIMI.
+- **Interviewer** — a template ladder that collects the case (vehicle identity,
+  symptoms, conditions) with **zero** model calls.
+- **Diagnostician (junior)** — CARpsy, on-device, private, offline-capable; issues the
+  preliminary diagnosis from the collected brief + 4-layer retrieval.
+- **Senior advisor** — Claude (cloud, **opt-in**), reached only when the owner
+  explicitly asks; one well-fed call receives make/model/year + symptoms — **never**
+  the VIN, plate, or raw sensor readings.
+- **Gate** — a deterministic validator that checks every diagnosis against the
+  vehicle's real data; a failing answer ships marked UNCONFIRMED (filter, not retry).
 - **Retriever** — the 4-layer knowledge pipeline (Claude-learned → SHIMI → vector RAG
   → P2P patterns) that grounds every reply.
 
@@ -124,30 +129,32 @@ peers through a shared DHT topic, and replicates with **no central server**.
 ```
         User message
              │
-        ┌────▼─────┐  deterministic, no ML
-        │  Router  │
-        └────┬─────┘
-   diagnostic│           general
-       ┌─────┴─────┐  ┌──────────────┐
-       ▼           │  ▼              │
-   CARpsy          │  Claude (cloud, opt-in)
-   on-device       │  make/model/year + question only
-       │           │  └─ answer stored locally for offline reuse
-       ▼           │
-  4-layer RAG ─────┘
-   ├─ Claude-learned knowledge
-   ├─ SHIMI hierarchical graph (SKOS)
-   ├─ on-device vector RAG (EmbeddingGemma)
-   └─ P2P pattern layer (fedRAG)
-       │
-       ▼
+   ┌─────────▼──────────┐  deterministic state machine, no ML to route
+   │   Intake ladder    │  Phase 1 — collect the case (0 tokens, offline)
+   └─────────┬──────────┘
+             ▼
+   ┌────────────────────┐  Phase 2 — on-device, offline
+   │  CARpsy (junior)   │  preliminary diagnosis, grounded by 4-layer retrieval:
+   │  + 4-layer RAG     │──┬─ Claude-learned knowledge (verified / unverified)
+   └─────────┬──────────┘  ├─ SHIMI hierarchical graph (SKOS)
+             │             ├─ on-device vector RAG (EmbeddingGemma)
+             │             └─ P2P pattern layer (fedRAG)
+             ▼
+   ┌────────────────────┐
+   │ Deterministic gate │  validate vs real vehicle data → UNCONFIRMED if it fails
+   └─────────┬──────────┘
+             ▼
    Grounded, plain-language diagnosis
-   + background Quality-Evaluator → corrections back into SHIMI
+             │
+             ▼  owner taps "senior review"  (explicit opt-in)
+   ┌────────────────────┐  Phase 3 — cloud, opt-in
+   │  Claude (senior)   │  redacted brief + junior hypothesis; never VIN/plate
+   └────────────────────┘  gate-passed answer → stored locally for offline reuse
 ```
 
-📖 **Deep dive:** the full two-agent system, the 4-layer retrieval pipeline, the
-quality-evaluator loop, and the end-to-end data flow now live in
-**[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)**.
+📖 **Deep dive:** the full intake → junior → senior pipeline, the 4-layer retrieval
+pipeline, the gate + knowledge-return learning loop, and the end-to-end data flow now
+live in **[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)**.
 
 ---
 
@@ -157,10 +164,10 @@ quality-evaluator loop, and the end-to-end data flow now live in
 |-------|------|------|------|
 | **[CARpsy](https://github.com/gazzimon/CARpsy)** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
 | **EmbeddingGemma 300M** (4-bit) | RAG vector embeddings | ~300 MB RAM | On-device via QVAC SDK |
-| **Claude Haiku** | General questions + quality eval | — | Cloud (opt-in) |
+| **Claude Sonnet** | Senior diagnostic advisor | — | Cloud (opt-in) |
 
-The **primary AI path is 100% on-device**. Cloud is opt-in, for general questions
-and background quality evaluation only.
+The **primary AI path is 100% on-device**. Cloud is opt-in — one well-fed senior call
+the owner explicitly requests, never an automatic per-message hop.
 
 ---
 
@@ -309,7 +316,7 @@ On the device:
 4. **Settings → Scan Paired Devices** → tap the adapter to connect.
 5. Open **Dashboard / Diagnostics** — live data and AI chat are ready.
 6. *(Optional)* **Settings → Claude AI** — paste your Anthropic key to enable the
-   cloud Generalist and background Quality-Evaluator.
+   opt-in cloud senior advisor (summoned only when you tap "senior review").
 
 ---
 
@@ -340,7 +347,7 @@ runs fully on-device.
 ## Documentation
 
 - 🧠 **[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)** — full intelligence architecture
-  (two-agent system, 4-layer retrieval, quality-evaluator loop, data flow).
+  (intake → junior → senior pipeline, 4-layer retrieval, gate + knowledge-return loop, data flow).
 - 🗺️ **[docs/ROADMAP.md](docs/ROADMAP.md)** — the path toward a self-sufficient CARpsy.
 - ✅ **[docs/QA-agent-intelligence.md](docs/QA-agent-intelligence.md)** — change log of
   every improvement to the AI stack.

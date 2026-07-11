@@ -147,7 +147,13 @@ async function runFullStack(
 
 jest.setTimeout(120_000); // Ollama inference can take 30-60s on CPU
 
-describe('Full stack: SHIMI + Ontology + Patterns + CARpsy-v2', () => {
+// This suite needs a live Ollama serving CARpsy at 127.0.0.1:11434. It is OFF
+// by default so `npm test` stays hermetic (CI and dev machines without a local
+// LLM must go green). Opt in with:  RUN_LLM_INTEGRATION=1 npm test
+const describeIntegration =
+  process.env.RUN_LLM_INTEGRATION === '1' ? describe : describe.skip;
+
+describeIntegration('Full stack: SHIMI + Ontology + Patterns + CARpsy-v2', () => {
 
   // ── TC-01: P0420 Toyota Camry ──────────────────────────────────────────────
   it('TC-01 | P0420 catalyst — correct diagnosis with SHIMI context', async () => {

@@ -1,46 +1,56 @@
 # OBDient — Intelligence Architecture
 
 This document is the deep dive behind the "How it works" summary in the
-[README](../README.md). It covers the full multi-agent system, the 4-layer
-knowledge-retrieval pipeline, the quality-evaluator loop, and the end-to-end data
-flow.
+[README](../README.md). It covers the intake → junior → senior diagnostic pipeline,
+the 4-layer knowledge-retrieval pipeline, the deterministic gate + knowledge-return
+learning loop, and the end-to-end data flow.
 
 > **TL;DR** — The primary diagnostic path runs **100% on-device** (CARpsy via the
-> QVAC SDK). The cloud (Claude) is an opt-in enhancement for general questions and
-> background quality evaluation only. Knowledge accumulates locally over time, so
-> the on-device model effectively gets smarter **without retraining its weights**.
+> QVAC SDK). The cloud (Claude) is an opt-in senior advisor the owner summons for a
+> single well-fed call — no automatic per-message routing. Knowledge accumulates
+> locally over time, so the on-device model effectively gets smarter **without
+> retraining its weights**.
 
 ---
 
-## Two-agent system
+## The diagnostic pipeline — intake · junior · senior
 
-A deterministic router (no ML, no added latency) classifies every message and sends
-it down the right path.
+The chat is a deterministic **state machine** (`DiagnosticIntakeSessionUseCase`),
+not a message-by-message router to the cloud. It walks a case through three phases,
+and Claude is reached **only** when the owner explicitly asks for a senior review.
 
 ```
 User message
       │
       ▼
- QueryRouter  ← deterministic, no ML
+ DiagnosticIntakeSession  ← deterministic state machine, no ML to route
       │
-      ├── DTCs / sensor keywords / fault diagnosis
-      │       ↓
-      │   CARpsy (on-device, Qwen3-0.6B Q4_K_M)
-      │   + 4-layer knowledge retrieval
-      │   Private · Fast · Works offline
+ Phase 1 — Intake (0 tokens, 0 latency)
+      │   A template ladder collects the case: vehicle identity (make/model/
+      │   year/mileage), symptoms, senses probe, conditions. Nothing hits a model.
       │
-      └── General automotive questions
-              ↓
-          Claude API (cloud, Haiku)
-          Receives: make/model/year + question only
-          Never receives: VIN, sensor readings
-              ↓
-          Answer stored in SHIMI (offline reuse)
+      ▼ brief ready
+ Phase 2 — Local diagnosis (on-device, offline)
+      │   CARpsy (Qwen3-0.6B Q4_K_M) issues a PRELIMINARY diagnosis from the
+      │   deterministic brief + 4-layer retrieval. No cloud call. The case then
+      │   waits in 'awaiting_senior' — the owner can keep chatting locally.
+      │
+      ▼ owner taps "senior review"  ← explicit opt-in, the ONLY path that spends tokens
+ Phase 3 — Senior advisor (cloud, opt-in)
+          ONE well-fed Claude (Sonnet) call carries the redacted brief + the
+          junior hypothesis; the senior conducts the diagnosis from there.
+          Receives: vehicle facts + symptoms.  Never: VIN, plate, or email.
 ```
 
-**Why deterministic routing?** Classification by keyword/DTC presence is instant,
-auditable, and free — no model call to decide which model to call. The private path
-(diagnostics) never touches the network.
+A message that isn't diagnostic — vehicle facts complete but no evidence to work
+from — degrades to plain **local** CARpsy chat (`local_only`). Claude is never
+auto-invoked for it.
+
+**Why a deterministic state machine and not a router-to-cloud?** A token-budget
+revision (ADR-0009) removed the earlier "general questions → Claude" auto-routing
+and the per-turn background quality audit: both spent cloud tokens invisibly — on
+greetings and on audits the user never saw. Now the private path is the default and
+the cloud is one deliberate, well-fed call the owner opts into.
 
 ---
 
@@ -73,7 +83,7 @@ within CARpsy's context window.
 
 SHIMI (*Semantic Hierarchical Index with Memory Integration*) is an on-device
 knowledge graph built from the OBD-II SKOS ontology. Each node tracks a confidence
-score updated by peer confirmations and Claude quality evaluations.
+score updated by human 👍/👎 feedback and peer confirmations.
 
 ```
 P0300 (Random Misfire)
@@ -130,27 +140,34 @@ Usuario: "mi motor tiembla"
 
 ---
 
-## Quality-evaluator loop
+## The learning loop — deterministic gate + knowledge return
 
-After CARpsy answers a diagnostic question, Claude silently scores it in the
-background (non-blocking). Low-scoring answers produce a correction that is stored
-back into SHIMI's Layer 0 — so next time, even offline, CARpsy retrieves the
-corrected answer.
+There is no background cloud scoring (that per-turn quality audit was removed with
+the token-budget revision). Answers earn authority through a **deterministic gate**
+and **human/outcome verification**, not a second model.
 
 ```
-CARpsy answers a diagnostic question
+Junior (Phase 2) or senior (Phase 3) issues a diagnosis
             ↓
-  Claude evaluates score 1–5 (background, non-blocking)
-            │
-    score ≥ 3 ──► log "acceptable"
-            │
-    score < 3 ──► Claude correction → stored in SHIMI Layer 0
-                  Next time, CARpsy retrieves the correct answer
-                  (even offline — it's in MMKV)
+  runGate() validates it against the vehicle's real data (diagnostic-gate.ts)
+            │   filter, NOT retry:
+    passed ─┼─► the answer ships normally; the verdict persists with the turn
+    failed ─┴─► the answer ships marked UNCONFIRMED in the UI
+
+  A gate-PASSED senior diagnosis takes two paths (both opt-in / fire-and-forget):
+    (a) stored on-device → SHIMI Layer 0 (MMKV + vector), as UNVERIFIED provenance,
+        so the junior retrieves it OFFLINE next time
+    (b) contributed as a redacted CaseChunk to the harvest outbox → distillation set
+            ↓
+  Human 👍/👎 on the diagnosis moves confidence:
+    👍 promotes the SHIMI node / confirms the stored answer (→ verified)
+    👎 lowers the node / removes the rejected entry
 ```
 
-Over sessions, SHIMI grows from validated knowledge. The on-device model effectively
-gets smarter **without retraining its weights**.
+Verified knowledge is kept **separate** from unverified in the prompt, so a
+single-source Claude suggestion never masquerades as ground truth until a human — or
+the car's own outcome — confirms it. Over sessions the on-device model retrieves more
+validated knowledge, effectively getting smarter **without retraining its weights**.
 
 ---
 
@@ -159,27 +176,28 @@ gets smarter **without retraining its weights**.
 ```
 ELM327 (BT) → OBDRepositoryImpl → obdStore
                                         ↓
-                              useDiagnosticsVM
+                              useChatVM  (sessionId per case)
                                         ↓
-                              MultiAgentChatUseCase
-                              ├── QueryRouter.classifyQuery()
+                              DiagnosticIntakeSessionUseCase
                               │
-                              ├── [diagnostic] ChatWithQVACUseCase
-                              │     └── LLMRepositoryImpl
-                              │           ├── ShimiDataSource.search()
-                              │           │   ├── Layer 0: claudeKnowledge
+                              ├── Phase 1 — intake ladder (deterministic, 0 tokens)
+                              │     brief-assembler → DiagnosticBrief (redacted)
+                              │
+                              ├── Phase 2 — junior local diagnosis
+                              │     └── ChatWithQVACUseCase → LLMRepositoryImpl
+                              │           ├── ShimiDataSource.searchWithProvenance()
+                              │           │   ├── Layer 0: claudeKnowledge (verified/unverified)
                               │           │   ├── Layer 1: shimiTree (SKOS)
                               │           │   ├── Layer 2: qvacRag (embeddings)
                               │           │   └── Layer 3: evaluatePatterns()
                               │           └── qvacSDK.chat()  ← on-device LLM
+                              │     └── runGate() → verdict persists with the turn
                               │
-                              └── [general] ClaudeAPIDataSource
-                                    └── answer → claudeKnowledge.store()
-                                                      ↓
-                                                  SHIMI Layer 0 (offline reuse)
-                                    [background] evaluateResponse()
-                                                  ↓
-                                              correction → SHIMI Layer 0
+                              └── Phase 3 — requestSenior()  [explicit opt-in only]
+                                    └── ClaudeAPIDataSource.converseSenior()  (Sonnet)
+                                          gate-PASSED answer →
+                                          ├── claudeKnowledge.store()  → SHIMI Layer 0 (offline reuse)
+                                          └── harvestOutbox.contributeCase()  → CaseChunk (opt-in)
 ```
 
 ---

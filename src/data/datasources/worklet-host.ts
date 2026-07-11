@@ -11,8 +11,14 @@
 //   - on(ns, step, handler) — subscribe to UNSOLICITED pushes (knowledge
 //     'chunk' ingest events, 'peer' churn events) that consume no waiter.
 //
-// Hermes-safe: byte-wise string <-> TypedArray (no TextDecoder/TextEncoder,
-// not guaranteed on Hermes); IPC.write always gets a Uint8Array, never a string.
+// Hermes-safe UTF-8 <-> TypedArray, hand-rolled (TextEncoder/TextDecoder are not
+// guaranteed on Hermes). MUST be real UTF-8, not byte-truncation: the worklet
+// encodes/decodes UTF-8 (b4a), and a payload like a senior answer carries
+// non-ASCII (bullets •, dashes —, °, accents). A naive `charCodeAt & 0xff` maps
+// e.g. `•` (U+2022) to 0x22 (`"`) or some chars to 0x0A (`\n`), injecting
+// spurious quotes/newlines that break the JSON framing → the worklet drops the
+// line → the request never gets a reply → a 15s timeout. Proper UTF-8 keeps
+// every non-delimiter byte in 0x80–0xBF, so the `\n` framing stays intact.
 
 import { Worklet } from 'react-native-bare-kit';
 import { Paths } from 'expo-file-system';
@@ -45,18 +51,63 @@ export interface WorkletReply {
 
 const REPLY_TIMEOUT_MS = 15_000;
 
+// Decode UTF-8 bytes → string (mirrors b4a.toString(buf, 'utf8') in the worklet).
 function bytesToString(data: unknown): string {
   if (typeof data === 'string') return data;
   const arr = data as Uint8Array;
   let s = '';
-  for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]!);
+  let i = 0;
+  while (i < arr.length) {
+    const b0 = arr[i++]!;
+    if (b0 < 0x80) {
+      s += String.fromCharCode(b0);
+    } else if (b0 < 0xe0) {
+      const b1 = arr[i++]! & 0x3f;
+      s += String.fromCharCode(((b0 & 0x1f) << 6) | b1);
+    } else if (b0 < 0xf0) {
+      const b1 = arr[i++]! & 0x3f;
+      const b2 = arr[i++]! & 0x3f;
+      s += String.fromCharCode(((b0 & 0x0f) << 12) | (b1 << 6) | b2);
+    } else {
+      const b1 = arr[i++]! & 0x3f;
+      const b2 = arr[i++]! & 0x3f;
+      const b3 = arr[i++]! & 0x3f;
+      const cp = (((b0 & 0x07) << 18) | (b1 << 12) | (b2 << 6) | b3) - 0x10000;
+      s += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+    }
+  }
   return s;
 }
 
+// Encode string → UTF-8 bytes (mirrors b4a.from(str, 'utf8') in the worklet).
 function stringToBytes(s: string): Uint8Array {
-  const arr = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) arr[i] = s.charCodeAt(i) & 0xff;
-  return arr;
+  const bytes: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    let code = s.charCodeAt(i);
+    // Combine a surrogate pair into a single code point.
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < s.length) {
+      const next = s.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (next - 0xdc00);
+        i++;
+      }
+    }
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
+  }
+  return new Uint8Array(bytes);
 }
 
 class WorkletHost {
