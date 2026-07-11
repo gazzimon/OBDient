@@ -250,7 +250,7 @@ export function upsertVehicle(row: typeof vehiclesTable.$inferInsert): Promise<v
 }
 
 // Returns the most recently connected vehicle matching this VIN, or null.
-// Used to avoid consuming Vincario API credits on reconnection.
+// Used to skip a redundant NHTSA vPIC decode on reconnection.
 export async function getVehicleByVin(vin: string): Promise<typeof vehiclesTable.$inferSelect | null> {
   try {
     const rows = getDb()

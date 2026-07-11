@@ -5,7 +5,7 @@
 **Your car, explained — privately, on your phone.**
 
 OBDient plugs into any ELM327 OBD-II adapter, reads your engine in real time, and
-diagnoses faults in plain language using a **self-trained AI model that runs 100%
+diagnoses faults in plain language using a **compact AI model that runs 100%
 on-device** through the [QVAC SDK](https://docs.qvac.tether.io/) — no cloud needed
 for the core diagnosis.
 
@@ -74,53 +74,62 @@ The endgame: **Claude teaches → the human (and the car) verify → SHIMI accum
 → CARpsy needs the cloud less → repeat.** The phone gets smarter without retraining
 the model's weights.
 
-### 🧠 Our own fine-tuned model — not an off-the-shelf API
+### 🧠 A clean on-device model — and the system that makes it smart
 
-**CARpsy** is a Qwen3-0.6B we fine-tuned specifically for OBD-II diagnostics. It
-runs locally via the QVAC SDK (~400 MB RAM, works offline).
+**CARpsy** is OBDient's on-device diagnostic assistant. By default it runs a **stock
+Qwen3-1.7B** (Q4_K_M, ~1.6 GB RAM) locally via the QVAC SDK, fully offline; low-RAM
+devices fall back to Llama 3.2 1B automatically.
+
+We *did* fine-tune a specialist — **CARpsy-v2** (Qwen3-0.6B) — and the training
+pipeline and weights are open. But we **ship the clean instruct model by default**:
+under our multi-agent design the local model's job is **interviewing, offline
+fallback, and RAG narration**, and a clean general model beats a damaged specialist
+there (the 0.6B fine-tune leaked training artifacts into responses). The edge isn't
+the weights — it's the **system around them**: the SHIMI graph, 4-layer retrieval,
+the deterministic gate, and multi-agent routing. The fine-tune stays selectable as a
+custom model for A/B.
 
 - 🔧 Training code & data pipeline: **[github.com/gazzimon/CARpsy](https://github.com/gazzimon/CARpsy)**
-- 📦 Quantized weights: **[gazzimon/CARpsy-v2-qwen3-0.6b-GGUF](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)**
+- 📦 Fine-tuned weights (optional / A-B): **[gazzimon/CARpsy-v2-qwen3-0.6b-GGUF](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)**
 
 ### 🤝 Multi-agent by design
 
-A **deterministic state machine** (no ML to route, no added latency) walks every case
-through clear roles:
+Instead of one chatbot, OBDient splits the job across roles driven by a **deterministic
+state machine** — no ML router, so routing is instant, auditable, and free. The private
+on-device path is the default: a template **interviewer** collects the case (0 tokens),
+then the **junior** (CARpsy) diagnoses from it, grounded by 4-layer retrieval — all
+offline. The cloud is a single **opt-in** escalation: a **senior advisor** (Claude)
+reached *only* when the owner asks, and it never receives the VIN, plate, or raw sensor
+readings. Every diagnosis is **gate-checked** against the car's real data before it
+earns authority (a filter, not a retry loop).
 
-- **Interviewer** — a template ladder that collects the case (vehicle identity,
-  symptoms, conditions) with **zero** model calls.
-- **Diagnostician (junior)** — CARpsy, on-device, private, offline-capable; issues the
-  preliminary diagnosis from the collected brief + 4-layer retrieval.
-- **Senior advisor** — Claude (cloud, **opt-in**), reached only when the owner
-  explicitly asks; one well-fed call receives make/model/year + symptoms — **never**
-  the VIN, plate, or raw sensor readings.
-- **Gate** — a deterministic validator that checks every diagnosis against the
-  vehicle's real data; a failing answer ships marked UNCONFIRMED (filter, not retry).
-- **Retriever** — the 4-layer knowledge pipeline (Claude-learned → SHIMI → vector RAG
-  → P2P patterns) that grounds every reply.
+See the full phase-by-phase flow in **How it works** below.
 
-### 🔗 Decentralized knowledge sharing — fedRAG (base code, see status)
+### 🔗 Decentralized knowledge sharing — fedRAG (on-device; cross-device replication verified over the DHT)
 
-A peer-to-peer **federated RAG** over [Hypercore + Hyperswarm](https://holepunch.to):
-each device keeps an append-only feed of **anonymous** diagnostic chunks, discovers
-peers through a shared DHT topic, and replicates with **no central server**.
+A peer-to-peer **federated RAG** over [Hypercore + Hyperswarm](https://holepunch.to),
+running inside a **Bare worklet** — a Node-compatible runtime alongside Hermes, so the
+real Hypercore/Hyperswarm stack executes on the phone. The device discovers peers
+through a shared DHT topic and replicates append-only feeds with **no central server**.
 
 - **End-to-end encrypted** transport (Hyperswarm's Noise protocol) over
   **cryptographically signed, append-only logs** (tamper-evident by design).
-- **Privacy contract:** chunks never carry VIN, Bluetooth address, or any user ID —
-  only DTC code, make, an approximate year range, anonymized text, and a confidence
-  score. Joining and contributing are **two separate opt-in toggles**, both off by default.
-- **Trust-gated:** remote knowledge is weighted by peer reputation and must reach a
+- **Privacy contract:** what leaves the device is a **redacted diagnostic case** — a
+  gate-checked senior diagnosis plus its structured brief — carrying **no VIN, no
+  Bluetooth address, no user ID** (redacted by construction). Joining the network and
+  contributing cases are **two separate opt-in toggles**, both off by default.
+- **Trust-gated:** incoming knowledge is weighted by peer reputation and must reach a
   **quorum of confirmations** before it can influence a diagnosis.
 
-> **⚠️ Status — full transparency.** The federated layer is **written and compiles,
-> but it has never been exercised peer-to-peer.** During the hackathon OBDient was
-> only ever installed on a **single device**, so cross-device replication was never
-> tested — and the runtime is currently **stubbed** anyway, because Hermes (React
-> Native's JS engine) has no Node.js host to run Hypercore. **Treat fedRAG as
-> architected base code, not a demonstrated feature.** Everything else in this list
-> — CARpsy, SHIMI, the 4-layer RAG, human distillation, the trust registry — runs
-> today on real hardware.
+> **⚠️ Status — full transparency.** At hackathon time OBDient was only ever installed
+> on a **single device**, so P2P sync was unproven. **Since then, cross-device
+> replication has been verified end-to-end over the real Hyperswarm DHT:** the phone
+> discovers a peer, completes the OBDIENT-RAG/1 handshake, replicates feeds
+> **bidirectionally**, ingests live blocks **continuously**, and contributes a redacted
+> case that a separate seed peer ingests. The one path still unexercised is **two
+> physical phones** peer-to-peer — verification ran phone ↔ a PC peer/seed over the real
+> DHT, not handset ↔ handset. CARpsy, SHIMI, the 4-layer RAG, human distillation, and
+> the trust registry all run today on real hardware.
 
 ---
 
@@ -129,27 +138,30 @@ peers through a shared DHT topic, and replicates with **no central server**.
 ```
         User message
              │
-   ┌─────────▼──────────┐  deterministic state machine, no ML to route
-   │   Intake ladder    │  Phase 1 — collect the case (0 tokens, offline)
-   └─────────┬──────────┘
              ▼
-   ┌────────────────────┐  Phase 2 — on-device, offline
+   ┌────────────────────┐  Phase 1 · deterministic intake — no ML, no cloud, 0 tokens
+   │   Intake ladder    │◄─┐  asks ONE question per turn (vehicle id, symptoms,
+   └─────────┬──────────┘  │  senses, conditions)…
+             │             └──  …looping over several turns until the case file is complete
+             ▼  case file (brief) ready
+   ┌────────────────────┐  Phase 2 · on-device, offline
    │  CARpsy (junior)   │  preliminary diagnosis, grounded by 4-layer retrieval:
-   │  + 4-layer RAG     │──┬─ Claude-learned knowledge (verified / unverified)
-   └─────────┬──────────┘  ├─ SHIMI hierarchical graph (SKOS)
-             │             ├─ on-device vector RAG (EmbeddingGemma)
-             │             └─ P2P pattern layer (fedRAG)
+   │  + 4-layer RAG     │──┬─ 0 · Claude-learned knowledge (verified / unverified)
+   └─────────┬──────────┘  ├─ 1 · SHIMI hierarchical graph (SKOS)
+             │             ├─ 2 · on-device vector RAG (EmbeddingGemma)
+             │             └─ 3 · P2P pattern layer (fedRAG)
              ▼
-   ┌────────────────────┐
-   │ Deterministic gate │  validate vs real vehicle data → UNCONFIRMED if it fails
+   ┌────────────────────┐  validates the diagnosis vs the car's real data →
+   │ Deterministic gate │  marks it UNCONFIRMED if it fails (a filter, never a retry)
    └─────────┬──────────┘
              ▼
-   Grounded, plain-language diagnosis
+   Junior diagnosis, shown to the owner in plain language
              │
-             ▼  owner taps "senior review"  (explicit opt-in)
-   ┌────────────────────┐  Phase 3 — cloud, opt-in
-   │  Claude (senior)   │  redacted brief + junior hypothesis; never VIN/plate
-   └────────────────────┘  gate-passed answer → stored locally for offline reuse
+             ▼  owner taps "senior review"  (explicit opt-in — the ONLY cloud call)
+   ┌────────────────────┐  Phase 3 · cloud, opt-in
+   │  Claude (senior)   │  redacted brief + junior hypothesis (never VIN/plate),
+   │  re-checked by gate │  re-validated by the same gate; gate-passed answer is
+   └────────────────────┘  stored on-device for offline reuse
 ```
 
 📖 **Deep dive:** the full intake → junior → senior pipeline, the 4-layer retrieval
@@ -162,7 +174,9 @@ live in **[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md)**.
 
 | Model | Role | Size | Runs |
 |-------|------|------|------|
-| **[CARpsy](https://github.com/gazzimon/CARpsy)** (Qwen3-0.6B Q4_K_M) | Diagnostic chat + interpretation | ~400 MB RAM | On-device via QVAC SDK |
+| **Qwen3-1.7B** (Q4_K_M) — CARpsy default | Diagnostic chat + interpretation | ~1.6 GB RAM | On-device via QVAC SDK |
+| **[CARpsy-v2](https://huggingface.co/gazzimon/CARpsy-v2-qwen3-0.6b-GGUF)** (Qwen3-0.6B fine-tune, optional) | Specialist A/B — load as custom model | ~0.5 GB RAM | On-device via QVAC SDK |
+| **Llama 3.2 1B** (Q4_0) | Automatic low-RAM fallback | ~0.9 GB RAM | On-device via QVAC SDK |
 | **EmbeddingGemma 300M** (4-bit) | RAG vector embeddings | ~300 MB RAM | On-device via QVAC SDK |
 | **Claude Sonnet** | Senior diagnostic advisor | — | Cloud (opt-in) |
 
@@ -198,7 +212,7 @@ the owner explicitly requests, never an automatic per-message hop.
 - **Human distillation:** 👍/👎 feedback updates SHIMI confidence; verified
   knowledge is separated from unverified.
 - Voice output and hands-free alerts while driving.
-- Decodes VIN (make / model / year / plant) via local lookup + Vincario API.
+- Decodes VIN (make / model / year) via the keyless NHTSA vPIC API — no key embedded.
 - Auto-disconnects after a configurable idle period (RPM = 0) to protect the battery.
 - **Persistent sessions** saved to local SQLite for later review in Reports.
 
@@ -260,7 +274,7 @@ src/
 | OS | Android 10+ (`minSdkVersion 29`) |
 | RAM | 4 GB minimum, 6 GB+ recommended |
 | Connectivity | Bluetooth Classic (for ELM327 adapter) |
-| Free storage | ~1 GB for on-device models |
+| Free storage | ~1.5 GB for on-device models |
 
 > A **physical Android device is required.** Bluetooth Classic and native modules
 > (QVAC SDK Bare runtime, MMKV) don't work on the Android emulator or Expo Go.
@@ -283,7 +297,7 @@ No dev environment needed. Grab the pre-built release and install it on an Andro
 > Or browse the [Releases page](https://github.com/gazzimon/OBDient/releases/tag/v1.0-hackathon).
 
 1. Download the APK, copy it to the phone, and install it (allow "install from unknown sources").
-2. Open the app → **Settings → QVAC Assistant → Load model** (downloads CARpsy once, ~400 MB).
+2. Open the app → **Settings → QVAC Assistant → Load model** (downloads the model once, ~1.1 GB).
 3. Pair the ELM327 in Android Bluetooth settings (PIN `1234`), then **Settings → Scan Paired Devices** → tap the adapter.
 
 > The APK is signed with the standard Android **debug key**, so Android may warn it's
@@ -310,7 +324,7 @@ npm run android
 
 On the device:
 
-1. **Settings → QVAC Assistant → Load model** — downloads CARpsy once (~400 MB).
+1. **Settings → QVAC Assistant → Load model** — downloads the model once (~1.1 GB).
 2. Plug the ELM327 into the car's OBD-II port and turn the ignition on.
 3. Pair the adapter in Android Bluetooth settings (PIN `1234`).
 4. **Settings → Scan Paired Devices** → tap the adapter to connect.
@@ -337,7 +351,7 @@ runs fully on-device.
 |---------|-------------|
 | `npm run android` | Build + run dev client on Android |
 | `npm start` | Start Metro bundler only |
-| `npm test` | Run Jest test suite |
+| `npm test` | Run the Jest suite (hermetic; set `RUN_LLM_INTEGRATION=1` to also run the live-LLM stack test) |
 | `npm run db:generate` | Generate Drizzle SQLite migrations |
 | `./scripts/capture-logs.ps1` | Capture an on-device runtime session to `artifacts/logs/` |
 | `./scripts/extract-audit.ps1` | Extract the structured `audit-*.jsonl` (loads, tokens, TTFT, tok/s) from a session log |

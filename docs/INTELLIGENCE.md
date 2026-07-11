@@ -222,26 +222,30 @@ vector store and feeds it as grounding context — no internet required.
 ## Distributed RAG (Hypercore) — fedRAG
 
 OBDient extends local RAG with a **federated knowledge layer** built on
-[Hypercore + Hyperswarm](https://holepunch.to). Each device maintains a local
-append-only feed of anonymous diagnostic chunks; instances discover each other via a
-shared DHT topic (`obdient-rag-v1`) and replicate feeds without a central server.
+[Hypercore + Hyperswarm](https://holepunch.to), executed inside a **Bare worklet** (a
+Node-compatible runtime beside Hermes). Devices discover each other via shared DHT
+topics and replicate append-only feeds without a central server:
+- **Receive** curated knowledge on the `obdient-rag-v1` topic (fact chunks / patterns /
+  SKOS patches from peers), ingested into SHIMI.
+- **Contribute** redacted, gate-checked cases on the `obdient-harvest-v1` topic —
+  replicated by the seed peer only, so peers never trade raw cases directly.
 
 **Privacy contract:**
-- Chunks never include VIN, Bluetooth address, or any user identifier.
-- Only DTC code, make, approximate year range, anonymized assessment text, and a
-  confidence score are shared.
-- Joining the network and contributing knowledge are **separate opt-in toggles**
+- What leaves the device is a **redacted diagnostic case** (structured brief +
+  gate-passed senior answer) — never the VIN, Bluetooth address, or any user identifier
+  (redacted by construction via `redact.ts` + brief-assembler).
+- Joining the network and contributing cases are **separate opt-in toggles**
   (both off by default).
-- Remote chunks must reach `confirmations ≥ 3` (quorum) before surfacing in context,
+- Incoming chunks must reach `confirmations ≥ 3` (quorum) before surfacing in context,
   and are weighted by peer reputation via the trust registry.
 
-> **Status — full transparency.** The federated layer is **written and compiles but
-> has never been exercised peer-to-peer**: during the hackathon OBDient was only ever
-> installed on a single device, so cross-device replication was never tested. The
-> runtime is also currently **stubbed** because Hermes (React Native's JS engine) has
-> no Node.js host to run Hypercore. Treat fedRAG as **architected base code, not a
-> demonstrated feature.** The SHIMI tree, SKOS, trust registry, pattern evaluator,
-> and local RAG all run fully today.
+> **Status — full transparency.** The P2P engine (Hypercore + Hyperswarm) runs for real
+> inside the Bare worklet and is validated **on-device** by the C0 spike (Settings →
+> Run spike). What has **not** been proven is real **cross-device** replication: during
+> the hackathon OBDient was only ever installed on a single device, so phone-to-phone
+> sync was never exercised end to end. Treat fedRAG as **working base code pending a
+> multi-device field test**, not yet a demonstrated feature. The SHIMI tree, SKOS,
+> trust registry, pattern evaluator, and local RAG all run fully today.
 
 ---
 
