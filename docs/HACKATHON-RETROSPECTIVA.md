@@ -32,7 +32,7 @@ Estas fueron las piezas que no había tocado antes y que integré durante el eve
 | **CARpsy** (Qwen3-0.6B fine-tuneado, GGUF Q4_K_M) | El diagnosticador local, offline | cargado vía QVAC SDK |
 | **EmbeddingGemma 300M** (4-bit) | Embeddings para el RAG vectorial on-device | `qvac-rag.datasource.ts` |
 | **SHIMI + ontología SKOS** | RAG jerárquico por confianza, no plano | `shimi.datasource.ts`, `obd-ontology.ts` |
-| **Router multi-agente determinístico** | Repartir cada mensaje (CARpsy local vs. Claude nube) sin latencia ML | `query-router.ts`, `multi-agent-chat.ts` |
+| **Ruteo multi-agente determinístico** | Decidir el camino sin latencia ML — luego reemplazado por la máquina de estados de intake (junior local → senior opt-in) | `diagnostic-intake-session.ts` (antes `query-router.ts`) |
 | **Instrumentación de auditoría** | Medir load, tokens, TTFT y tok/s por inferencia | `src/core/utils/audit-log.ts`, `audit-*.jsonl` |
 | **Hypercore / Hyperswarm (fedRAG)** | Base de RAG federado P2P (escrito, aún no ejercitado) | datasource Hypercore |
 | **react-native-bluetooth-classic** | SPP con el ELM327 | `elm327.datasource.ts` |

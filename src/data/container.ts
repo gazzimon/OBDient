@@ -69,7 +69,6 @@ export const container = {
   clearTroubleCodes: new ClearTroubleCodesUseCase(obdRepo),
   interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
   chatWithQVAC: carpsy,
-  multiAgentChat: multiAgent,
   // ADR-0009 pipeline, token-budget revision: deterministic intake (templates
   // only — no InterviewerPort, so questions are instant and free) → junior
   // diagnosis (QVAC, offline) → senior conversation ONLY on user opt-in.
