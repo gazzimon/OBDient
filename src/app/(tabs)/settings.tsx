@@ -70,6 +70,8 @@ export default function SettingsScreen() {
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
   const contributeCases         = useSettingsStore((s) => s.contributeCases);
   const setContributeCases      = useSettingsStore((s) => s.setContributeCases);
+  const developerMode           = useSettingsStore((s) => s.developerMode);
+  const setDeveloperMode        = useSettingsStore((s) => s.setDeveloperMode);
 
   const [peerCount, setPeerCount]         = useState(0);
   const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
@@ -283,15 +285,15 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* ---------- QVAC on-device model ---------- */}
-        <SectionHeader title="QVAC Assistant" />
+        {/* ---------- CARpsy on-device model ---------- */}
+        <SectionHeader title="CARpsy Assistant" />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
           <View className="flex-row items-center justify-between mb-3">
             <View>
               <Text className="text-brand-text font-mono text-sm">On-device model</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                CARpsy · Qwen3-0.6B · runs offline
+                CARpsy · Qwen3-1.7B · runs offline
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>
@@ -469,36 +471,43 @@ export default function SettingsScreen() {
         </View>
 
         {/* C0 spike — P2P engine probe (Bare worklet). Independent of the
-            Distributed RAG toggle: it tests the substrate, not the feature. */}
-        <View className="bg-brand-surface rounded-2xl p-4 mb-6">
-          <View className="mb-3">
-            <Text className="text-brand-text font-mono text-sm">P2P engine test (C0)</Text>
-            <Text className="text-brand-muted font-mono text-xs mt-0.5">
-              Runs Hypercore + Hyperswarm inside the Bare worklet on this device
-            </Text>
+            Distributed RAG toggle: it tests the substrate, not the feature.
+            Developer-only surface (hidden from end users). */}
+        {developerMode && (
+          <View className="bg-brand-surface rounded-2xl p-4 mb-6">
+            <View className="mb-3">
+              <Text className="text-brand-text font-mono text-sm">P2P engine test (C0)</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Runs Hypercore + Hyperswarm inside the Bare worklet on this device
+              </Text>
+            </View>
+            <PillButton
+              label={spikeRunning ? 'Running…' : 'Run spike'}
+              onPress={handleRunSpike}
+              loading={spikeRunning}
+            />
+            {spikeReport != null && (
+              <Text
+                className={`font-mono text-xs mt-3 ${
+                  spikeReport.includes('FAIL') || spikeReport.includes('crashed') || spikeReport.includes('aborted')
+                    ? 'text-brand-red'
+                    : 'text-brand-teal'
+                }`}
+                selectable
+              >
+                {spikeReport}
+              </Text>
+            )}
           </View>
-          <PillButton
-            label={spikeRunning ? 'Running…' : 'Run spike'}
-            onPress={handleRunSpike}
-            loading={spikeRunning}
-          />
-          {spikeReport != null && (
-            <Text
-              className={`font-mono text-xs mt-3 ${
-                spikeReport.includes('FAIL') || spikeReport.includes('crashed') || spikeReport.includes('aborted')
-                  ? 'text-brand-red'
-                  : 'text-brand-teal'
-              }`}
-              selectable
-            >
-              {spikeReport}
-            </Text>
-          )}
-        </View>
+        )}
 
-        {/* ---------- Audit (dev) ---------- */}
-        <SectionHeader title="Instrumentation" />
-        <AuditPanel />
+        {/* ---------- Audit (dev) — developer-only surface ---------- */}
+        {developerMode && (
+          <>
+            <SectionHeader title="Instrumentation" />
+            <AuditPanel />
+          </>
+        )}
 
         {/* ---------- About ---------- */}
         <SectionHeader title="About" />
@@ -507,6 +516,21 @@ export default function SettingsScreen() {
           <SettingsRow>
             <Text className="text-brand-text font-mono text-sm">App version</Text>
             <Text className="text-brand-teal font-mono text-sm">v0.1.7 (VIN UI)</Text>
+          </SettingsRow>
+          <View className="h-px bg-brand-border" />
+          <SettingsRow>
+            <View className="flex-1 mr-4">
+              <Text className="text-brand-text font-mono text-sm">Developer mode</Text>
+              <Text className="text-brand-muted font-mono text-xs mt-0.5">
+                Show the P2P engine test and instrumentation panel
+              </Text>
+            </View>
+            <Switch
+              value={developerMode}
+              onValueChange={setDeveloperMode}
+              trackColor={{ true: MINT, false: '#3A3A3C' }}
+              thumbColor="#F5F5F5"
+            />
           </SettingsRow>
         </View>
       </ScrollView>

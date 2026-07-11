@@ -11,7 +11,7 @@ interface ChatBubbleProps {
 }
 
 const SOURCE_LABEL: Record<string, string> = {
-  carpsy: 'QVAC',
+  carpsy: 'CARpsy',
   claude: 'Claude',
 };
 
@@ -27,7 +27,7 @@ const MUTED = '#9A9A9A';
 export function ChatBubble({ message, feedback, onRate }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const sourceKey = message.source ?? 'carpsy';
-  const agentLabel = SOURCE_LABEL[sourceKey] ?? 'QVAC';
+  const agentLabel = SOURCE_LABEL[sourceKey] ?? 'CARpsy';
   const agentColor = SOURCE_COLOR[sourceKey] ?? 'text-brand-teal';
 
   // Show the feedback footer only on assistant messages that went through retrieval.

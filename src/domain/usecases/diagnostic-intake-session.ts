@@ -43,10 +43,11 @@ import { runGate, GateResult } from '@/domain/services/diagnostic-gate';
 import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 
 // Ladder steps the intake may still need to walk. 'identity' groups
-// make/model/year AND mileage (asked together, re-asked grouped) — all four are
-// hard requirements now. Fuel type is requested in the same question but never
-// blocks. OBD is no longer a ladder step: the case can be diagnosed from
-// symptoms with the scanner mute (ADR-0006-A).
+// make/model/year (asked together, re-asked grouped) — those three are the hard
+// requirements. Mileage and fuel type are requested in the same question but
+// never block (mileage enriches the high-mileage gate when given). OBD is no
+// longer a ladder step: the case can be diagnosed from symptoms with the
+// scanner mute (ADR-0006-A).
 export type IntakeGap = 'identity' | 'symptoms' | 'senses' | 'conditions';
 
 // ─── Ports (effects stay outside; fakes in tests) ───────────────────────────
@@ -234,9 +235,9 @@ function templateQuestion(
           return `Ya tengo: ${known}. Me falta ${list} — ¿me lo pasás?`;
         }
         return (
-          'Para empezar necesito conocer el vehículo. Contame marca, modelo, año, ' +
-          'kilometraje y motor (nafta/diésel y cilindrada) — por ejemplo: ' +
-          '"Chevrolet Corsa 1.6 nafta 2008, 150 mil km".'
+          'Para empezar necesito conocer el vehículo. Contame marca, modelo, año y ' +
+          'motor (nafta/diésel y cilindrada); si sabés el kilometraje, sumalo — por ejemplo: ' +
+          '"Chevrolet Corsa 1.6 nafta 2008" (o "…, 150 mil km").'
         );
       case 'symptoms':
         return symptomHints.length > 0
@@ -264,9 +265,9 @@ function templateQuestion(
         return `So far I have: ${known}. I still need ${list} — could you tell me?`;
       }
       return (
-        'To get started I need to know the vehicle. Tell me the make, model, year, ' +
-        'mileage and engine (petrol/diesel and displacement) — for example: ' +
-        '"Chevrolet Corsa 1.6 petrol 2008, 150,000 km".'
+        'To get started I need to know the vehicle. Tell me the make, model, year and ' +
+        'engine (petrol/diesel and displacement); add the mileage if you know it — for example: ' +
+        '"Chevrolet Corsa 1.6 petrol 2008" (or "…, 150,000 km").'
       );
     case 'symptoms':
       return symptomHints.length > 0
@@ -335,7 +336,7 @@ function candidateSymptomLabels(
 }
 
 const GAP_OBJECTIVES: Readonly<Record<IntakeGap, string>> = {
-  identity: 'the vehicle identity: make, model, year, mileage (all required), engine/fuel type',
+  identity: 'the vehicle identity: make, model, year (required); mileage and engine/fuel type are optional extras',
   symptoms: 'at least one concrete symptom the owner notices — press for specifics (offer the example symptoms as choices)',
   senses: 'symptoms through the senses: noises, smells, smoke color, dashboard lights, feel (jerk/shake/power loss)',
   conditions: 'since when it happens, conditions (cold/hot, idle/accelerating), recent repairs',
@@ -447,7 +448,7 @@ export class DiagnosticIntakeSessionUseCase {
       userNotes: state.notes.join('\n'),
       now: Date.now(),
     });
-    const hard = briefReadiness(brief);   // make + model + year + mileage
+    const hard = briefReadiness(brief);   // make + model + year (mileage optional)
 
     // Evidence to diagnose from: a reported symptom (mandatory path) or, if the
     // owner truly can't produce one, whatever the scanner gave us.
@@ -482,7 +483,7 @@ export class DiagnosticIntakeSessionUseCase {
     }
 
     // ── Pick the next ladder step ──
-    // Identity gap covers make/model/year AND mileage — all four block.
+    // Identity gap covers make/model/year (mileage is optional — never blocks).
     const missingIdentity = hard.missing.filter(
       (m): m is IdentityField =>
         m === 'make' || m === 'model' || m === 'year' || m === 'mileage',
@@ -776,5 +777,13 @@ export class DiagnosticIntakeSessionUseCase {
   /** Drops the in-memory case (e.g. when a session ends). Logged data persists. */
   reset(sessionId: string): void {
     this.cases.delete(sessionId);
+  }
+
+  /** Reopen a saved session for continued chat (Reports → "Continue"). Seeds an
+   *  `awaiting_senior` state so the next turn skips the intake ladder — CARpsy
+   *  answers from the full conversation history and the senior offer stays
+   *  available — instead of re-interviewing a case the owner already completed. */
+  resume(sessionId: string): void {
+    this.cases.set(sessionId, { ...freshCase(), phase: 'awaiting_senior' });
   }
 }

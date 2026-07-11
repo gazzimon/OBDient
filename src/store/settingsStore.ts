@@ -39,6 +39,9 @@ interface SettingsState {
   // Whether the user has acknowledged the informational-use disclaimer (audit I1).
   // Gates the first-run modal; once true the modal never shows again.
   disclaimerAccepted: boolean;
+  // Reveals developer-only surfaces (P2P engine test, instrumentation panel).
+  // Off by default so the shipping app stays clean; devs/evaluators flip it on.
+  developerMode: boolean;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -51,6 +54,7 @@ interface SettingsState {
   setContributeCases: (enabled: boolean) => void;
   setClaudeApiKey: (key: string | null) => void;
   setDisclaimerAccepted: (accepted: boolean) => void;
+  setDeveloperMode: (enabled: boolean) => void;
   reset: () => void;
 }
 
@@ -66,6 +70,7 @@ const DEFAULTS = {
   contributeCases: false,
   claudeApiKey: null as string | null,
   disclaimerAccepted: false,
+  developerMode: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -84,6 +89,7 @@ export const useSettingsStore = create<SettingsState>()(
       setContributeCases: (enabled) => set({ contributeCases: enabled }),
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setDisclaimerAccepted: (accepted) => set({ disclaimerAccepted: accepted }),
+      setDeveloperMode: (enabled) => set({ developerMode: enabled }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -103,6 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
         contributeCases: state.contributeCases,
         claudeApiKey: state.claudeApiKey,
         disclaimerAccepted: state.disclaimerAccepted,
+        developerMode: state.developerMode,
       }),
     }
   )

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { container } from '@/data/container';
+import { useSessionStore } from '@/store/sessionStore';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCodeCard';
 import { DisclaimerNote } from '@/presentation/components/feedback/Disclaimer';
@@ -51,8 +52,19 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 export default function InterpretationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const resumeSession = useSessionStore((s) => s.resumeSession);
   const [session, setSession] = useState<DiagnosticSession | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  // Reopen this saved case for continued chat: load it as the active session,
+  // seed the intake state so the next turn skips re-interviewing, and jump to
+  // the Diagnosis tab where the full history is already on screen.
+  const handleResume = () => {
+    if (session == null) return;
+    resumeSession(session);
+    container.diagnosticSession.resume(session.id);
+    router.replace('/diagnostics');
+  };
 
   useEffect(() => {
     if (id == null) return;
@@ -92,12 +104,23 @@ export default function InterpretationScreen() {
             <Text className="text-brand-teal font-mono-bold text-sm mb-1">
               {session.startedAt.toLocaleDateString()}
             </Text>
-            <Text className="text-brand-muted font-mono text-xs mb-6">
+            <Text className="text-brand-muted font-mono text-xs mb-4">
               {session.startedAt.toLocaleTimeString()}
               {session.endedAt != null && ` — ${session.endedAt.toLocaleTimeString()}`}
               {' · '}
               {session.status}
             </Text>
+
+            {/* Reopen the case and keep chatting with CARpsy, full history intact */}
+            <Pressable
+              onPress={handleResume}
+              className="flex-row items-center justify-center gap-2 border border-brand-teal rounded-xl px-4 py-3 mb-6 active:opacity-70"
+            >
+              <MaterialCommunityIcons name="chat-plus-outline" size={16} color="#2DE1A5" />
+              <Text className="font-mono text-sm" style={{ color: '#2DE1A5' }}>
+                Continue this consultation
+              </Text>
+            </Pressable>
 
             <SectionHeader title={`Trouble Codes (${session.troubleCodes.length})`} />
             {session.troubleCodes.length === 0 ? (

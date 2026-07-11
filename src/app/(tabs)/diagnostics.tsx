@@ -250,6 +250,10 @@ export default function DiagnosticsScreen() {
                 I'll collect the case — vehicle, symptoms, OBD data — and bring in
                 the senior diagnostician.
               </Text>
+              {/* Informational-use notice (audit I1): shown up-front on the empty
+                  state so it stays visible without crowding the active chat. The
+                  first-run DisclaimerGate modal remains the primary acknowledgment. */}
+              <DisclaimerNote className="mt-8 px-2" />
             </View>
           )}
 
@@ -265,7 +269,7 @@ export default function DiagnosticsScreen() {
           {isResponding && (
             <View className="items-start mb-3">
               <View className="bg-brand-surface border border-brand-border rounded-2xl rounded-tl-sm px-4 py-3">
-                <Text className="text-brand-teal font-mono text-xs mb-1">QVAC</Text>
+                <Text className="text-brand-teal font-mono text-xs mb-1">CARpsy</Text>
                 <ActivityIndicator size="small" color={MINT} />
               </View>
             </View>
@@ -290,9 +294,6 @@ export default function DiagnosticsScreen() {
             </Pressable>
           </View>
         )}
-
-        {/* Persistent informational-use notice (audit I1) */}
-        <DisclaimerNote className="px-6 pb-1.5" />
 
         {/* Input bar — always enabled; "+" starts a new diagnosis */}
         <View className="px-4 pb-4 pt-2 flex-row items-end gap-3 border-t border-brand-border">

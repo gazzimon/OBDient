@@ -15,6 +15,9 @@ interface SessionState {
   pendingMileage: number | null;
 
   startSession: (vehicleId: string) => void;
+  // Reopen a saved session as the active one (Reports → "Continue"), so the
+  // owner can keep chatting with the full history as context.
+  resumeSession: (session: DiagnosticSession) => void;
   // Attaches a just-connected vehicle to the ongoing (ad-hoc) session instead
   // of replacing it — the pre-connection chat/intake must survive the connect.
   adoptVehicle: (vehicleId: string) => void;
@@ -37,6 +40,9 @@ export const useSessionStore = create<SessionState>()((set) => ({
     set((state) => ({
       activeSession: createSession(vehicleId, state.pendingMileage),
     })),
+
+  resumeSession: (session) =>
+    set({ activeSession: session, pendingMileage: session.mileage ?? null }),
 
   adoptVehicle: (vehicleId) =>
     set((state) => ({

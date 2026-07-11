@@ -183,18 +183,18 @@ describe('briefReadiness (G0)', () => {
     expect(hasObdEvidence(brief)).toBe(false); // no DTCs, no snapshot — still ready
   });
 
-  it('mileage is a hard requirement — identity alone is not enough', () => {
+  it('mileage is optional — full identity alone is ready without it', () => {
     const brief = buildBrief(input({
       vehicle: vehicle(),
-      troubleCodes: [dtc('P0302', 'critical')], // OBD present but mileage missing
+      troubleCodes: [dtc('P0302', 'critical')], // identity complete, no mileage
     }));
-    expect(briefReadiness(brief)).toEqual({ ready: false, missing: ['mileage'] });
+    expect(briefReadiness(brief)).toEqual({ ready: true, missing: [] });
   });
 
-  it('reports each missing field including mileage', () => {
+  it('reports each missing identity field — mileage never blocks', () => {
     const brief = buildBrief(input({ troubleCodes: [dtc('P0302', 'critical')] }));
     expect(briefReadiness(brief)).toEqual({
-      ready: false, missing: ['make', 'model', 'year', 'mileage'],
+      ready: false, missing: ['make', 'model', 'year'],
     });
   });
 

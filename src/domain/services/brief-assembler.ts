@@ -118,7 +118,9 @@ export function briefReadiness(brief: DiagnosticBrief): BriefReadiness {
   if (brief.identity.make == null) missing.push('make');
   if (brief.identity.model == null) missing.push('model');
   if (brief.identity.year == null) missing.push('year');
-  if (brief.mileageKm == null) missing.push('mileage');
+  // Mileage is optional: it enriches the brief (and the high-mileage gate) when
+  // provided, but must NOT block the diagnosis — owners often don't know it, and
+  // re-asking forever was a friction point. make/model/year still gate.
 
   return { ready: missing.length === 0, missing };
 }
