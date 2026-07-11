@@ -594,3 +594,47 @@ describe('harvest admission valve (PLAN-002 v2 C1)', () => {
     expect(harvest.cases).toHaveLength(0); // …but only senior cases distill
   });
 });
+
+describe('senior return path — offline reuse (PLAN-002 v2 N3a)', () => {
+  const codes = [dtc('P0335')];
+
+  function fakeKnowledgeReturn() {
+    const stored: { query: string; answer: string }[] = [];
+    return {
+      stored,
+      storeSeniorAnswer(query: string, answer: string) { stored.push({ query, answer }); },
+    };
+  }
+
+  async function runToSenior(uc: DiagnosticIntakeSessionUseCase) {
+    await uc.execute('s1', input('no arranca', { troubleCodes: codes }));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', { troubleCodes: codes }));
+    await uc.execute('s1', input('desde hace una semana, en frio', { troubleCodes: codes }));
+    return uc.requestSenior('s1', input('', { troubleCodes: codes }));
+  }
+
+  it('stores a gate-passed senior diagnosis with a case retrieval key', async () => {
+    const kr = fakeKnowledgeReturn();
+    const senior = fakeSenior(true, 'P0335 points to the crankshaft position sensor; test its wiring.');
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog(), null, null, kr);
+
+    const res = await runToSenior(uc);
+    expect(res.gate?.passed).toBe(true);
+    expect(kr.stored).toHaveLength(1);
+    expect(kr.stored[0]?.answer).toContain('crankshaft');
+    // The key carries the case essence (DTC + vehicle), never a VIN.
+    expect(kr.stored[0]?.query).toContain('P0335');
+    expect(kr.stored[0]?.query).toContain('Chevrolet');
+    expect(kr.stored[0]?.query).not.toContain('3G1SF'); // no VIN
+  });
+
+  it('does NOT store a gate-failed senior diagnosis (same admission valve)', async () => {
+    const kr = fakeKnowledgeReturn();
+    const senior = fakeSenior(true, 'Replace the catalytic converter and clear the codes.');
+    const uc = new DiagnosticIntakeSessionUseCase(fakeJunior(), senior, fakeLog(), null, null, kr);
+
+    const res = await runToSenior(uc);
+    expect(res.gate?.passed).toBe(false);
+    expect(kr.stored).toHaveLength(0);
+  });
+});

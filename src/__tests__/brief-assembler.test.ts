@@ -1,7 +1,7 @@
 // Tests for brief-assembler.ts — deterministic handoff brief (ADR-0009 §2)
 // and the G0 readiness checklist (§1).
 
-import { buildBrief, briefReadiness, hasObdEvidence, renderBriefPrompt, BriefInput } from '@/domain/services/brief-assembler';
+import { buildBrief, briefReadiness, hasObdEvidence, renderBriefPrompt, renderBriefRetrievalKey, BriefInput } from '@/domain/services/brief-assembler';
 import { redactText, REDACTED } from '@/core/utils/redact';
 import type { Vehicle } from '@/domain/entities/vehicle';
 import type { ObdParameter, ObdParameterSnapshot } from '@/domain/entities/obd-parameter';
@@ -61,6 +61,29 @@ function input(overrides: Partial<BriefInput> = {}): BriefInput {
 const userId = (overrides: Partial<NonNullable<BriefInput['userIdentity']>> = {}) => ({
   make: null, model: null, year: null, engine: null, mileageKm: null, fuelType: null,
   ...overrides,
+});
+
+// ---------------------------------------------------------------------------
+// Retrieval key (N3a) — case essence for Layer 0 reuse, never a VIN
+// ---------------------------------------------------------------------------
+
+describe('renderBriefRetrievalKey', () => {
+  it('combines vehicle, DTC + fault-class label, and symptoms', () => {
+    const brief = buildBrief(input({
+      vehicle: vehicle(),
+      troubleCodes: [dtc('P0302', 'critical')],
+      symptomIds: ['sym_rough_idle'],
+    }));
+    const key = renderBriefRetrievalKey(brief);
+    expect(key).toContain('Chevrolet Corsa 2008');
+    expect(key).toContain('P0302');
+    // The VIN never leaks into the key (the brief has none by construction).
+    expect(key).not.toContain(vehicle().vin);
+  });
+
+  it('is terse and empty-safe when nothing is known', () => {
+    expect(renderBriefRetrievalKey(buildBrief(input()))).toBe('');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
 | **C0** spike P2P | Hypercore+Hyperswarm corren en el worklet Bare (validado en device) | `p2p/harvest-worklet.mjs` + Settings |
 | **C1** cosecha | Caso gate-passed → `CaseChunk` al feed local (outbox); enriquecimiento por outcome (mismo id → merge); toggle `contributeCases` | `harvest-outbox.datasource.ts` + válvula de admisión |
 | **C3/C4** seed | Seed peer Node en repo propio; topic de cosecha separado del de conocimiento | `gazzimon/obdient-seed` |
+| **N3(a)** retorno senior | Diagnóstico senior gate-passed → `claudeKnowledge` (capa 0 + vector) → CARpsy lo reusa offline como *unverified*. Cierra el lazo en runtime | `container.ts` + `renderBriefRetrievalKey` + tests |
 | **ADR-0010 F0** | Fix auditoría: 1 feed por peer + tope, dedup por id, cota de ingest | `remote-feed-manager.ts`, `collections.ts` + 12 tests |
 
 > La auditoría SRE externa era mayormente ficción (describía un firmware ESP32 que no
@@ -33,13 +34,13 @@ snapshot de estado: nace porque el trabajo pendiente quedó disperso entre PLAN-
 
 ### Fase A — Cerrar el lazo en runtime y hacerlo medible  *(mayor valor, riesgo bajo)*
 
-- **N3(a) — Retorno del senior a CARpsy (reuso en runtime).** Hoy el lazo está
-  **abierto en runtime**: `claudeKnowledge.store()` no lo llama nadie (verificado). La
-  mitad de *dataset* ya la cubre C1 (cosecha → seed → `corrections.jsonl`); falta la
-  mitad de *reuso inmediato*: al cerrar un caso gate-passed, guardar la respuesta del
-  senior en `claudeKnowledge` (+ `ingestClaude`) para que CARpsy la recupere **offline
-  la próxima vez**, como provenance *unverified*. Es el mecanismo "se vuelve más
-  inteligente" en caliente. Riesgo BAJO. Reusa la capa 0 que ya existe.
+- **N3(a) — Retorno del senior a CARpsy (reuso en runtime). ✅ HECHO (2026-07-10).**
+  El lazo en runtime estaba abierto (`claudeKnowledge.store()` sin llamadores). Ahora,
+  al cerrar un caso gate-passed, `KnowledgeReturnPort` guarda la respuesta del senior en
+  `claudeKnowledge` (+ `ingestClaude`) con una clave de retrieval del caso
+  (`renderBriefRetrievalKey`: vehículo + DTC/faultClass + síntomas, sin VIN). CARpsy la
+  recupera **offline la próxima vez** como provenance *unverified*. Misma válvula de
+  admisión que C1 (solo gate-passed); fire-and-forget. La mitad de *dataset* la cubre C1.
 - **N4 — Superficie de auditoría (instrumentación).** Ring buffer en memoria
   alimentado por `audit()` + panel dev en Settings (TTFT, tok/s, tokens, verdicts del
   gate) + badge "on-device · N s" para el usuario. Sin esto **no podemos medir** ni la
@@ -99,5 +100,6 @@ alimentando ya corre: UX4 (outcome) + C1 (cosecha).
 de hardware (F3) y verificar el bootstrap (F2)** → **destilar cuando haya corpus (N5)** y
 hardware/proxy detrás de flags.
 
-El siguiente paso natural, y de mayor ROI, es **N3(a)**: es barato, cierra el único lazo
-que sigue abierto, y reusa la capa 0 que ya está construida.
+Con **N3(a) ya cerrado**, el siguiente paso de mayor ROI es **N4** (superficie de
+auditoría): es lo que vuelve *medible* todo lo construido — la ganancia de N0, la tasa de
+rechazo del gate y la métrica de dependencia de Claude — y es barato.

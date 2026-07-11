@@ -228,6 +228,25 @@ export function renderBriefPrompt(brief: DiagnosticBrief): string {
 // Preliminary diagnosis prompt for the on-device junior (fase 2 of the token
 // pipeline): same deterministic case file, tuned for a small local model —
 // short, structured, and honest that a senior review is available on demand.
+// Compact retrieval key for a case (PLAN-002 v2 N3a). When a gate-passed senior
+// diagnosis is stored in Layer 0 for offline reuse, this is its query key: the
+// same essence a future similar case's retrieval query would carry — active
+// DTCs, their fault-class labels, confirmed symptoms, and the vehicle. Kept
+// terse so keyword fallback and semantic embedding both stay on-topic. No VIN
+// (the brief has none by construction).
+export function renderBriefRetrievalKey(brief: DiagnosticBrief): string {
+  const parts: string[] = [];
+  const { make, model, year } = brief.identity;
+  const vehicle = [make, model, year].filter((v) => v != null).join(' ');
+  if (vehicle) parts.push(vehicle);
+  for (const d of brief.dtcs) {
+    parts.push(d.faultClassLabel ? `${d.code} ${d.faultClassLabel}` : d.code);
+  }
+  for (const s of brief.symptoms) parts.push(s.label);
+  for (const d of brief.describedSymptoms) parts.push(d);
+  return parts.join('; ');
+}
+
 export function renderLocalDiagnosisPrompt(brief: DiagnosticBrief, language: 'es' | 'en'): string {
   const replyLanguage = language === 'es' ? 'Spanish' : 'English';
   const lines: string[] = [];

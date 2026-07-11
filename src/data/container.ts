@@ -17,6 +17,7 @@ import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
 import { DiagnosticIntakeSessionUseCase } from '@/domain/usecases/diagnostic-intake-session';
 import { caseLog } from '@/data/datasources/case-log.datasource';
 import { harvestOutbox } from '@/data/datasources/harvest-outbox.datasource';
+import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
 // Initialize Hypercore network conditionally based on persisted user preference.
@@ -40,6 +41,17 @@ const seniorAgent = {
     claudeAPI.converseSenior(history),
 };
 
+// N3a — senior return path: a gate-passed senior diagnosis is stored on-device
+// (Layer 0 + vector index) so the junior reuses it offline next time, as
+// unverified provenance. Fire-and-forget: reuse is a bonus, never a blocker.
+const knowledgeReturn = {
+  storeSeniorAnswer: (query: string, answer: string) => {
+    void claudeKnowledge
+      .store(query, answer)
+      .catch((err) => console.warn('[N3a] senior answer store failed:', err));
+  },
+};
+
 export const container = {
   // Direct read access for the reports screen (list/detail/delete are queries,
   // not use cases with business rules)
@@ -60,8 +72,9 @@ export const container = {
     multiAgent,
     seniorAgent,
     caseLog,
-    null,          // InterviewerPort off (template questions — instant and free)
-    harvestOutbox, // C1: gate-passed senior cases → outbox feed (opt-in inside)
+    null,            // InterviewerPort off (template questions — instant and free)
+    harvestOutbox,   // C1: gate-passed senior cases → outbox feed (opt-in inside)
+    knowledgeReturn, // N3a: gate-passed senior answers → Layer 0 for offline reuse
   ),
   saveDiagnosticReport: new SaveDiagnosticReportUseCase(reportRepo),
   // TriggerAlertUseCase is instantiated in BluetoothProvider with platform AlertServices

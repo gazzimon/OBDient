@@ -35,6 +35,7 @@ import {
   hasObdEvidence,
   renderBriefPrompt,
   renderLocalDiagnosisPrompt,
+  renderBriefRetrievalKey,
 } from '@/domain/services/brief-assembler';
 import { symptomsForConcepts, SYMPTOM_MAP } from '@/data/knowledge/symptom-ontology';
 import { redactText } from '@/core/utils/redact';
@@ -93,6 +94,15 @@ export interface HarvestPort {
     seniorAnswer: string;
     gate: GateResult;
   }): void;
+}
+
+// Knowledge return path (PLAN-002 v2 N3a): store a gate-passed senior diagnosis
+// on-device so the junior can retrieve it OFFLINE next time, as UNVERIFIED
+// provenance (single-source until a human 👍 or an outcome confirms it). This
+// is the runtime-reuse half of the loop; C1 (HarvestPort) is the dataset half.
+// Fire-and-forget. `query` is the case retrieval key; `answer` is the diagnosis.
+export interface KnowledgeReturnPort {
+  storeSeniorAnswer(query: string, answer: string): void;
 }
 
 // ─── Session state ───────────────────────────────────────────────────────────
@@ -386,6 +396,7 @@ export class DiagnosticIntakeSessionUseCase {
     private readonly caseLog: CaseLogPort,
     private readonly interviewer: InterviewerPort | null = null,
     private readonly harvest: HarvestPort | null = null,
+    private readonly knowledgeReturn: KnowledgeReturnPort | null = null,
   ) {}
 
   async execute(sessionId: string, input: ChatWithQVACInput): Promise<MultiAgentChatResult> {
@@ -642,11 +653,14 @@ export class DiagnosticIntakeSessionUseCase {
         state: brief.vehicleState,
       });
       this.caseLog.logTurn(sessionId, 'senior', reply, gate);
-      // C1 admission valve: only a gate-passed senior diagnosis becomes a
-      // CaseChunk in the harvest outbox (outcome arrives later via UX4 and
-      // merges by content-addressed id at the hub).
+      // Gate-passed senior diagnosis: two destinations, same admission valve.
       if (gate.passed) {
+        // C1 — dataset half: becomes a CaseChunk in the harvest outbox
+        // (outcome arrives later via UX4 and merges by content id at the hub).
         this.harvest?.contributeCase({ brief, seniorAnswer: reply, gate });
+        // N3a — runtime-reuse half: store on-device so the junior retrieves it
+        // OFFLINE next time as unverified provenance. Repairs the open loop.
+        this.knowledgeReturn?.storeSeniorAnswer(renderBriefRetrievalKey(brief), reply);
       }
       return {
         text: reply,

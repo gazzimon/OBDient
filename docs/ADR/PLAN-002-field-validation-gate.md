@@ -73,14 +73,15 @@ Gate-as-**filter**, not gate-as-retry: a failing answer is *marked unconfirmed*
   facts (UX1 of v1, kept). No retry.
   (b) Senior path: the senior's diagnosis is gated before persisting to the case
   base; the gate verdict is stored with the turn. Risk LOW-MED.
-- **N3 — Senior return path (repair the loop).** Two speeds, same source:
-  (a) **Runtime reuse:** gate-passed senior answers → `claudeKnowledge.store()`
-  (revives Layer 0 + `ingestClaude` vector index) → CARpsy retrieves them offline
-  next time, as *unverified* provenance (the prompt split already exists).
-  (b) **Distillation harvest:** append-only export `corrections.jsonl`
-  (ADR-0002 Phase 1): `{ brief, senior_answer, gate_result, outcome?, ts }`.
-  Opt-in manual export first; a thin ingest worker only if volume justifies it.
-  Risk MED.
+- **N3 — Senior return path (repair the loop).** Two halves, same source:
+  (a) **Runtime reuse. ✅ BUILT (2026-07-10).** A gate-passed senior answer →
+  `claudeKnowledge.store()` (revives Layer 0 + `ingestClaude` vector index) via
+  `KnowledgeReturnPort`, keyed by `renderBriefRetrievalKey(brief)` → CARpsy
+  retrieves it offline next time as *unverified* provenance (the prompt split
+  already exists). Same admission valve as C1 (gate-passed only); fire-and-forget.
+  (b) **Distillation harvest. ✅ BUILT** as the C-track (C1 outbox → C3 seed →
+  `corrections.jsonl`), superseding the manual-export sketch here.
+  Risk MED. **Done.**
 - **N4 — Audit surface.** Ring buffer (~50 records) fed by `audit()` alongside
   console; dev-only panel in Settings (TTFT, tok/s, tokens, gate verdicts); a
   minimal user-facing "on-device · N s" badge (UX3 of v1 becomes the gate/latency
