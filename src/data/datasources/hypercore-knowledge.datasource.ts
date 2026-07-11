@@ -31,7 +31,6 @@ import { workletHost, persistentFeedDir } from './worklet-host';
 
 // Re-export FactChunk under its legacy name, still used by the getChunks read path.
 export type KnowledgeChunk = FactChunk;
-export { QUORUM as MIN_CONFIRMATIONS_MAP };
 export const MIN_CONFIRMATIONS = QUORUM.fact;
 
 export class HypercoreKnowledgeSource {

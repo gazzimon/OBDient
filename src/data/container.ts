@@ -11,7 +11,6 @@ import { ConnectToVehicleUseCase } from '@/domain/usecases/connect-to-vehicle';
 import { ReadRealTimeParametersUseCase } from '@/domain/usecases/read-real-time-parameters';
 import { ReadTroubleCodesUseCase } from '@/domain/usecases/read-trouble-codes';
 import { ClearTroubleCodesUseCase } from '@/domain/usecases/clear-trouble-codes';
-import { InterpretWithQVACUseCase } from '@/domain/usecases/interpret-with-qvac';
 import { ChatWithQVACUseCase } from '@/domain/usecases/chat-with-qvac';
 import { MultiAgentChatUseCase } from '@/domain/usecases/multi-agent-chat';
 import { DiagnosticIntakeSessionUseCase } from '@/domain/usecases/diagnostic-intake-session';
@@ -67,7 +66,6 @@ export const container = {
   readRealTimeParameters: new ReadRealTimeParametersUseCase(obdRepo),
   readTroubleCodes: new ReadTroubleCodesUseCase(obdRepo),
   clearTroubleCodes: new ClearTroubleCodesUseCase(obdRepo),
-  interpretWithQVAC: new InterpretWithQVACUseCase(llmRepo),
   chatWithQVAC: carpsy,
   // ADR-0009 pipeline, token-budget revision: deterministic intake (templates
   // only — no InterviewerPort, so questions are instant and free) → junior
