@@ -49,9 +49,9 @@ car's own physical outcome — is what breaks that loop and lets confidence rise
 | Step | What | Status |
 |------|------|--------|
 | 1 | Cut the single-source leak — separate *verified* (curated) from *unverified* (Claude) in the prompt | ✅ Done |
-| 2 | HITL Level A — 👍/👎 feedback that moves SHIMI/Claude confidence | ✅ Done |
+| 2 | HITL — the case outcome ("did the fix work?") moves SHIMI/Claude confidence, verified by the car; captured in Reports and re-offered on resume (replaces the per-message 👍/👎) | ✅ Done |
 | 3 | Semantic retrieval — ingest Claude answers into a RAG workspace so they're found by meaning | ✅ Done |
-| 4 | Ground-truth outcome — did the repair actually work? | 🔲 Planned |
+| 4 | Ground-truth outcome — explicit "did it work?" tap is live and now moves confidence (Step 2); **passive** detection (DTC recurrence across drive cycles) still planned | 🔶 Partial |
 | 5 | Confidence-gated promotion — only verified knowledge becomes "trusted" | 🔲 Planned |
 | 6 | Dependency metric — measure what % of queries still escalate to Claude | 🔲 Planned |
 | 7 | Fine-tuning loop — distill verified Q→A pairs into CARpsy's weights | 🔲 Planned |

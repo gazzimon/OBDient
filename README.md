@@ -52,11 +52,17 @@ validated, so the graph doesn't just grow — it gets *more trustworthy* over ti
 > **In one line:** flat RAG finds *similar words*; SHIMI retrieves *related
 > meaning, ranked by how much we trust it*.
 
-### 🙋 Human distillation — the RAG that learns from its driver
+### 🙋 Human distillation — the RAG that learns from the car
 
-Every answer can be rated 👍 / 👎. That feedback isn't cosmetic: it **distills**
-human judgment straight into the knowledge graph. Verified knowledge is kept
-**separate** from unverified, which is how OBDient actively fights hallucinations.
+Every case closes with the strongest possible signal: **did the repair actually
+work?** Captured with a single tap in Reports — and offered again the moment the
+owner *reopens* an old case — that outcome isn't cosmetic: it **distills** verified
+judgment straight into the knowledge graph, moving the confidence of exactly the
+knowledge the diagnosis used. Verified knowledge is kept **separate** from
+unverified, which is how OBDient actively fights hallucinations. Crucially the
+signal is the **car's own result**, not a momentary thumbs-up rated before the fix
+was ever tried — independent physical verification is what lets confidence rise
+safely (never Claude validating Claude).
 
 This creates a virtuous cycle — written here in both registers so anyone gets it:
 

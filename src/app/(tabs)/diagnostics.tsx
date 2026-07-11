@@ -46,7 +46,7 @@ export default function DiagnosticsScreen() {
   const { codes, loadState, errorMessage, readCodes } = useDiagnosticsVM();
   const {
     messages, isResponding, chatError, feedback, seniorOffer,
-    sendMessage, sendInitialAssessment, requestSeniorReview, rateMessage,
+    sendMessage, sendInitialAssessment, requestSeniorReview,
   } = useChatVM();
 
   const [mileageText, setMileageText] = useState('');
@@ -262,7 +262,6 @@ export default function DiagnosticsScreen() {
               key={msg.id}
               message={msg}
               feedback={feedback[msg.id]}
-              onRate={rateMessage}
             />
           ))}
 

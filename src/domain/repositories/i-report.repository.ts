@@ -41,6 +41,9 @@ export interface IReportRepository {
   // Upserts the tap-only case outcome (one row per session).
   saveOutcome(sessionId: string, outcome: CaseOutcome): Promise<void>;
 
+  // The case outcome, or null if the user hasn't answered yet.
+  getOutcome(sessionId: string): Promise<CaseOutcome | null>;
+
   // Permanently removes a session.
   deleteSession(id: string): Promise<void>;
 }

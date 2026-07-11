@@ -5,18 +5,16 @@ import { useState, useCallback } from 'react';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { container } from '@/data/container';
-import { shimiDataSource } from '@/data/datasources/shimi.datasource';
-import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { createChatMessage } from '@/domain/entities/chat-message';
 import type { ChatSource } from '@/domain/entities/chat-message';
 import type { ChatTurn, RetrievalProvenance } from '@/domain/repositories/i-llm.repository';
 
-export type Rating = 'up' | 'down';
-
-// Per-message feedback state: what the response drew on + the user's rating.
+// Per-message provenance: what the response drew on (drives the inline
+// "unverified suggestion" flag). The quality RATING is no longer captured here
+// per message — it now lives on the case outcome in Reports (the stronger,
+// car-verified signal), so this carries provenance only.
 export interface MessageFeedback {
   readonly provenance: RetrievalProvenance;
-  readonly rating: Rating | null;
 }
 
 export function useChatVM() {
@@ -25,7 +23,8 @@ export function useChatVM() {
   // True while the case sits in 'awaiting_senior': the local diagnosis is done
   // and the user may summon the senior (Claude) — the ONLY path that spends tokens.
   const [seniorOffer, setSeniorOffer]   = useState(false);
-  // messageId → feedback. Ephemeral (session-scoped); confidence changes persist.
+  // messageId → provenance. Ephemeral (session-scoped); drives the inline
+  // "unverified suggestion" flag only — the quality signal lives on the outcome.
   const [feedback, setFeedback] = useState<Record<string, MessageFeedback>>({});
 
   const vehicle       = useOBDStore((s) => s.vehicle);
@@ -77,11 +76,11 @@ export function useChatVM() {
       const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
-      // Only diagnosis answers carry the thumb (rateable); questions, greetings
-      // and follow-up chatter don't — the case-level signal lives in Reports.
+      // Only diagnosis answers carry provenance (rateable); questions, greetings
+      // and follow-up chatter don't — it drives the inline "unverified" flag.
       if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
-        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov } }));
       }
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Chat failed');
@@ -108,11 +107,11 @@ export function useChatVM() {
       const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
       addChatMessage(assistantMsg);
       setSeniorOffer(result.seniorOffer === true);
-      // Only diagnosis answers carry the thumb (rateable); questions, greetings
-      // and follow-up chatter don't — the case-level signal lives in Reports.
+      // Only diagnosis answers carry provenance (rateable); questions, greetings
+      // and follow-up chatter don't — it drives the inline "unverified" flag.
       if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
-        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov } }));
       }
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Initial assessment failed');
@@ -144,11 +143,11 @@ export function useChatVM() {
       // On success the case moved to the senior phase → no offer; on failure
       // the use case keeps the offer alive so the user can retry.
       setSeniorOffer(result.seniorOffer === true);
-      // Only diagnosis answers carry the thumb (rateable); questions, greetings
-      // and follow-up chatter don't — the case-level signal lives in Reports.
+      // Only diagnosis answers carry provenance (rateable); questions, greetings
+      // and follow-up chatter don't — it drives the inline "unverified" flag.
       if (result.retrieval && result.rateable) {
         const prov = result.retrieval;
-        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov, rating: null } }));
+        setFeedback((f) => ({ ...f, [assistantMsg.id]: { provenance: prov } }));
       }
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Senior review failed');
@@ -157,26 +156,10 @@ export function useChatVM() {
     }
   }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage]);
 
-  // Human feedback 👍/👎 — moves confidence of the knowledge the response used.
-  // 👍 raises the SHIMI node (verified) and confirms any Claude-origin entries used.
-  // 👎 lowers the node and removes the rejected Claude-origin entries.
-  const rateMessage = useCallback((messageId: string, rating: Rating) => {
-    setFeedback((f) => {
-      const entry = f[messageId];
-      if (!entry || entry.rating != null) return f; // no provenance, or already rated
-      const { dtcId, claudeQueries } = entry.provenance;
-
-      if (rating === 'up') {
-        if (dtcId) shimiDataSource.confirmDtc(dtcId);
-        claudeQueries.forEach((q) => claudeKnowledge.confirm(q));
-      } else {
-        if (dtcId) shimiDataSource.weakenDtc(dtcId);
-        claudeQueries.forEach((q) => claudeKnowledge.reject(q));
-      }
-
-      return { ...f, [messageId]: { ...entry, rating } };
-    });
-  }, []);
+  // Human feedback is captured once per case as the outcome in Reports
+  // ("¿se resolvió?"), which moves SHIMI/Claude confidence from the car-verified
+  // result (see ReportRepositoryImpl.saveOutcome) — a stronger signal than a
+  // per-message thumb rated before the fix was ever tried.
 
   return {
     messages,
@@ -188,6 +171,5 @@ export function useChatVM() {
     sendMessage,
     sendInitialAssessment,
     requestSeniorReview,
-    rateMessage,
   } as const;
 }

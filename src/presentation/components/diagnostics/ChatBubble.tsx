@@ -1,13 +1,12 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ChatMessage } from '@/domain/entities/chat-message';
-import type { MessageFeedback, Rating } from '@/presentation/viewmodels/useChatVM';
+import type { MessageFeedback } from '@/presentation/viewmodels/useChatVM';
 
 interface ChatBubbleProps {
   message: ChatMessage;
   feedback?: MessageFeedback | undefined;
-  onRate?: ((messageId: string, rating: Rating) => void) | undefined;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -22,18 +21,18 @@ const SOURCE_COLOR: Record<string, string> = {
 
 const MINT = '#2DE1A5';
 const AMBER = '#F5A623';
-const MUTED = '#9A9A9A';
 
-export function ChatBubble({ message, feedback, onRate }: ChatBubbleProps) {
+export function ChatBubble({ message, feedback }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const sourceKey = message.source ?? 'carpsy';
   const agentLabel = SOURCE_LABEL[sourceKey] ?? 'CARpsy';
   const agentColor = SOURCE_COLOR[sourceKey] ?? 'text-brand-teal';
 
-  // Show the feedback footer only on assistant messages that went through retrieval.
-  const showFeedback = !isUser && feedback != null && onRate != null;
-  const usedUnverified = feedback?.provenance.usedUnverified ?? false;
-  const rating = feedback?.rating ?? null;
+  // A retrieval that leaned on unverified (Claude-origin) knowledge is flagged
+  // inline. The quality signal itself is no longer a per-message thumb — it now
+  // lives on the case outcome in Reports ("¿se resolvió?"), the stronger signal
+  // verified by the car, captured when the owner actually knows the result.
+  const usedUnverified = !isUser && (feedback?.provenance.usedUnverified ?? false);
 
   // Deterministic gate verdict (PLAN-002 v2 UX1) — only diagnosis messages
   // carry it. Hard violations mark the answer as unconfirmed, with the
@@ -88,45 +87,12 @@ export function ChatBubble({ message, feedback, onRate }: ChatBubbleProps) {
           </View>
         )}
 
-        {showFeedback && (
-          <View className="mt-3 pt-2 border-t border-brand-border flex-row items-center justify-between">
-            {usedUnverified ? (
-              <View className="flex-row items-center gap-1 flex-1 mr-2">
-                <MaterialCommunityIcons name="alert-outline" size={12} color={AMBER} />
-                <Text className="text-brand-muted font-mono text-[10px] flex-shrink">
-                  contains unverified suggestion
-                </Text>
-              </View>
-            ) : (
-              <View className="flex-1" />
-            )}
-
-            <View className="flex-row items-center gap-3">
-              <Pressable
-                onPress={() => rating == null && onRate(message.id, 'up')}
-                hitSlop={8}
-                disabled={rating != null}
-                className="active:opacity-60"
-              >
-                <MaterialCommunityIcons
-                  name={rating === 'up' ? 'thumb-up' : 'thumb-up-outline'}
-                  size={16}
-                  color={rating === 'up' ? MINT : MUTED}
-                />
-              </Pressable>
-              <Pressable
-                onPress={() => rating == null && onRate(message.id, 'down')}
-                hitSlop={8}
-                disabled={rating != null}
-                className="active:opacity-60"
-              >
-                <MaterialCommunityIcons
-                  name={rating === 'down' ? 'thumb-down' : 'thumb-down-outline'}
-                  size={16}
-                  color={rating === 'down' ? AMBER : MUTED}
-                />
-              </Pressable>
-            </View>
+        {usedUnverified && (
+          <View className="mt-3 pt-2 border-t border-brand-border flex-row items-center gap-1">
+            <MaterialCommunityIcons name="alert-outline" size={12} color={AMBER} />
+            <Text className="text-brand-muted font-mono text-[10px] flex-shrink">
+              contains unverified suggestion
+            </Text>
           </View>
         )}
       </View>

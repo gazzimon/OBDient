@@ -1,7 +1,7 @@
 // Saved session detail: final parameter snapshot, DTCs, and the chat history.
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { TroubleCodeCard } from '@/presentation/components/diagnostics/TroubleCo
 import { DisclaimerNote } from '@/presentation/components/feedback/Disclaimer';
 import type { DiagnosticSession } from '@/domain/entities/diagnostic-session';
 import type { ObdParameter } from '@/domain/entities/obd-parameter';
+import type { OutcomeResolved } from '@/domain/repositories/i-report.repository';
 import type { ChatMessage } from '@/domain/entities/chat-message';
 
 function ParameterRow({ param }: { param: ObdParameter }) {
@@ -55,16 +56,8 @@ export default function InterpretationScreen() {
   const resumeSession = useSessionStore((s) => s.resumeSession);
   const [session, setSession] = useState<DiagnosticSession | null>(null);
   const [notFound, setNotFound] = useState(false);
-
-  // Reopen this saved case for continued chat: load it as the active session,
-  // seed the intake state so the next turn skips re-interviewing, and jump to
-  // the Diagnosis tab where the full history is already on screen.
-  const handleResume = () => {
-    if (session == null) return;
-    resumeSession(session);
-    container.diagnosticSession.resume(session.id);
-    router.replace('/diagnostics');
-  };
+  // Whether this case already has an outcome — gates the resume prompt below.
+  const [hasOutcome, setHasOutcome] = useState(true);
 
   useEffect(() => {
     if (id == null) return;
@@ -72,7 +65,50 @@ export default function InterpretationScreen() {
       .getSessionById(id)
       .then((s) => (s != null ? setSession(s) : setNotFound(true)))
       .catch(() => setNotFound(true));
+    container.reportRepo
+      .getOutcome(id)
+      .then((o) => setHasOutcome(o != null))
+      .catch(() => setHasOutcome(true));
   }, [id]);
+
+  // Reopen this saved case for continued chat: load it as the active session,
+  // seed the intake state so the next turn skips re-interviewing, and jump to
+  // the Diagnosis tab where the full history is already on screen.
+  const proceedResume = useCallback(() => {
+    if (session == null) return;
+    resumeSession(session);
+    container.diagnosticSession.resume(session.id);
+    router.replace('/diagnostics');
+  }, [session, resumeSession, router]);
+
+  // Persist the outcome (moves confidence + enriches the seed) then continue.
+  const saveOutcomeAndResume = useCallback(
+    (resolved: OutcomeResolved) => {
+      if (session != null) {
+        void container.reportRepo.saveOutcome(session.id, { resolved, rootCause: null });
+      }
+      proceedResume();
+    },
+    [session, proceedResume],
+  );
+
+  // Anthropological trigger: reopening a case is the natural moment to learn
+  // whether the previous fix worked. Ask once — only when we don't have an
+  // outcome yet — so the strongest signal (the car's own result) gets captured
+  // exactly when the owner is back and the case is fresh.
+  const handleResume = useCallback(() => {
+    if (session == null) return;
+    if (hasOutcome) { proceedResume(); return; }
+    Alert.alert(
+      'Retomar consulta',
+      '¿La reparación anterior funcionó?',
+      [
+        { text: 'Sí, se resolvió', onPress: () => saveOutcomeAndResume('yes') },
+        { text: 'No, sigue igual', onPress: () => saveOutcomeAndResume('no') },
+        { text: 'Ahora no', style: 'cancel', onPress: proceedResume },
+      ],
+    );
+  }, [session, hasOutcome, proceedResume, saveOutcomeAndResume]);
 
   const params = session != null ? Object.values(session.parameters) : [];
 

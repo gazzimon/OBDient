@@ -8,13 +8,18 @@ import {
   deleteSession,
   insertTroubleCode,
   getTroubleCodesBySession,
+  getLatestBriefBySession,
   getOutcomeBySession,
   upsertOutcome,
 } from '@/data/datasources/storage.datasource';
 import { mapTroubleCodeToRow, mapRowToTroubleCode } from '@/data/mappers/dtc.mapper';
 import { harvestOutbox } from '@/data/datasources/harvest-outbox.datasource';
+import { shimiDataSource } from '@/data/datasources/shimi.datasource';
+import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { faultClassFor } from '@/domain/services/fault-class';
+import { renderBriefRetrievalKey } from '@/domain/services/brief-assembler';
 import { SessionNotFoundError } from '@/core/errors/obd.errors';
+import type { DiagnosticBrief } from '@/domain/entities/diagnostic-brief';
 import type {
   IReportRepository,
   ReportListItem,
@@ -114,6 +119,52 @@ export class ReportRepositoryImpl implements IReportRepository {
     // content-addressed id, the hub merges. Fire-and-forget; opt-in gated
     // inside the datasource.
     harvestOutbox.contributeOutcome(sessionId, outcome.resolved);
+
+    // Human distillation, driven by the STRONGEST signal — the car's own
+    // outcome (this replaces the per-message 👍/👎). A resolved case validates
+    // the knowledge it used; an unresolved one weakens it; 'pending' is neutral.
+    // Fire-and-forget: confidence updates must never fail the outcome save.
+    if (outcome.resolved !== 'pending') {
+      void this.applyOutcomeToConfidence(sessionId, outcome.resolved).catch((err) =>
+        console.warn('[Outcome] confidence update failed:', err),
+      );
+    }
+  }
+
+  // Move on-device confidence from a verified case outcome. The signal is
+  // anchored to persisted data (DTC codes + the brief's retrieval key), so it
+  // works long after the session — no ephemeral chat state required.
+  private async applyOutcomeToConfidence(
+    sessionId: string,
+    resolved: 'yes' | 'no',
+  ): Promise<void> {
+    const positive = resolved === 'yes';
+
+    // SHIMI layer: confirm/weaken the canonical node for each of the case's DTCs.
+    const dtcRows = await getTroubleCodesBySession(sessionId);
+    const seen = new Set<string>();
+    for (const row of dtcRows) {
+      if (seen.has(row.code)) continue;
+      seen.add(row.code);
+      if (positive) shimiDataSource.confirmDtc(row.code);
+      else shimiDataSource.weakenDtc(row.code);
+    }
+
+    // Claude layer: the senior answer (if any) was stored under the brief's
+    // retrieval key (N3a). Recompute it from the persisted brief and move it.
+    const briefRow = await getLatestBriefBySession(sessionId);
+    if (briefRow != null) {
+      const brief = JSON.parse(briefRow.briefJson) as DiagnosticBrief;
+      const key = renderBriefRetrievalKey(brief);
+      if (positive) claudeKnowledge.confirm(key);
+      else claudeKnowledge.reject(key);
+    }
+  }
+
+  async getOutcome(sessionId: string): Promise<CaseOutcome | null> {
+    const row = await getOutcomeBySession(sessionId);
+    if (row?.resolved == null) return null;
+    return { resolved: row.resolved, rootCause: row.rootCause ?? null };
   }
 
   async getSessionById(id: string): Promise<DiagnosticSession | null> {
