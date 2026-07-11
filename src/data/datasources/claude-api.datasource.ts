@@ -11,7 +11,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 // Senior diagnostician (ADR-0009): one well-fed call per case, so it earns a
 // stronger model than a chat-with-anything path would.
-const SENIOR_MODEL = 'claude-sonnet-5';
+const SENIOR_MODEL = 'claude-haiku-4-5';
 
 const SENIOR_SYSTEM =
   'You are a senior automotive diagnostic technician. A local intake agent hands ' +
@@ -74,9 +74,21 @@ export class ClaudeAPIDataSource {
     });
 
     await this.assertOk(response);
-    const data = (await response.json()) as { content: { text: string }[] };
-    const text = data.content[0]?.text ?? '';
-    if (!text) throw new Error('Claude senior returned an empty response');
+    const data = (await response.json()) as any;
+
+    // Debug: log the full response structure if it's not what we expect
+    if (!data.content || !Array.isArray(data.content) || !data.content[0]?.text) {
+      console.error('[ClaudeAPI] Unexpected response structure:', {
+        hasContent: !!data.content,
+        contentLength: data.content?.length,
+        firstBlock: data.content?.[0],
+        stopReason: data.stop_reason,
+        fullResponse: JSON.stringify(data, null, 2),
+      });
+      throw new Error(`Claude API returned empty response. Stop reason: ${data.stop_reason}`);
+    }
+
+    const text = data.content[0].text;
     return text;
   }
 

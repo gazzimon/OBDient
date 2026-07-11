@@ -45,7 +45,7 @@ export default function DiagnosticsScreen() {
 
   const { codes, loadState, errorMessage, readCodes } = useDiagnosticsVM();
   const {
-    messages, isResponding, chatError, feedback, seniorOffer,
+    messages, isResponding, seniorPending, chatError, feedback, seniorOffer,
     sendMessage, sendInitialAssessment, requestSeniorReview,
   } = useChatVM();
 
@@ -279,16 +279,26 @@ export default function DiagnosticsScreen() {
           )}
         </ScrollView>
 
-        {/* Senior opt-in — the ONLY action that reaches Claude (fase 3) */}
-        {seniorOffer && !isResponding && (
+        {/* Senior opt-in — the ONLY action that reaches Claude (fase 3).
+            Stays clickable while the junior is still answering: the owner can
+            summon the senior without waiting for CARpsy. Only its own in-flight
+            call (seniorPending) disables it. */}
+        {seniorOffer && (
           <View className="px-4 pb-2">
             <Pressable
               onPress={() => void requestSeniorReview()}
-              className="flex-row items-center justify-center gap-2 border border-[#7C6AFE] rounded-xl px-4 py-2.5 active:opacity-70"
+              disabled={seniorPending}
+              className={`flex-row items-center justify-center gap-2 border border-[#7C6AFE] rounded-xl px-4 py-2.5 active:opacity-70 ${
+                seniorPending ? 'opacity-40' : ''
+              }`}
             >
-              <MaterialCommunityIcons name="account-tie" size={16} color="#7C6AFE" />
+              {seniorPending ? (
+                <ActivityIndicator size="small" color="#7C6AFE" />
+              ) : (
+                <MaterialCommunityIcons name="account-tie" size={16} color="#7C6AFE" />
+              )}
               <Text className="font-mono text-sm" style={{ color: '#7C6AFE' }}>
-                Consult senior advisor (Claude)
+                {seniorPending ? 'Consulting senior…' : 'Consult senior advisor (Claude)'}
               </Text>
             </Pressable>
           </View>

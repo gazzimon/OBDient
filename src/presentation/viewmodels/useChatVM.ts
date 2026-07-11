@@ -19,6 +19,10 @@ export interface MessageFeedback {
 
 export function useChatVM() {
   const [isResponding, setIsResponding] = useState(false);
+  // Senior call in flight. Tracked SEPARATELY from isResponding so the owner can
+  // summon the senior while the junior is still answering (concurrent calls),
+  // and neither unblocks the other's UI.
+  const [seniorPending, setSeniorPending] = useState(false);
   const [chatError, setChatError]       = useState<string | null>(null);
   // True while the case sits in 'awaiting_senior': the local diagnosis is done
   // and the user may summon the senior (Claude) — the ONLY path that spends tokens.
@@ -123,11 +127,17 @@ export function useChatVM() {
   // Fase 3 opt-in: the user taps "senior advisor" — the ONE Claude call with
   // the deterministic brief + junior hypothesis. Everything before this is free.
   const requestSeniorReview = useCallback(async () => {
-    if (isResponding) return;
+    // Decoupled from isResponding on purpose: the owner may summon the senior
+    // WHILE the junior is still answering a follow-up (they've seen enough
+    // locally). The two calls run concurrently — the junior turn is local/free
+    // and the case phase stays 'awaiting_senior' throughout — and each tracks its
+    // own in-flight flag so neither unblocks the other's UI. Guard on the senior's
+    // own flag to prevent a double senior call.
+    if (seniorPending) return;
     const sessionId = useSessionStore.getState().activeSession?.id;
     if (sessionId == null) return;
     setChatError(null);
-    setIsResponding(true);
+    setSeniorPending(true);
     try {
       const history: ChatTurn[] = messages.map((m) => ({ role: m.role, content: m.content }));
       const result = await container.diagnosticSession.requestSenior(sessionId, {
@@ -152,9 +162,9 @@ export function useChatVM() {
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Senior review failed');
     } finally {
-      setIsResponding(false);
+      setSeniorPending(false);
     }
-  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage]);
+  }, [seniorPending, messages, vehicle, mileage, codes, parameters, addChatMessage]);
 
   // Human feedback is captured once per case as the outcome in Reports
   // ("¿se resolvió?"), which moves SHIMI/Claude confidence from the car-verified
@@ -164,6 +174,7 @@ export function useChatVM() {
   return {
     messages,
     isResponding,
+    seniorPending,
     chatError,
     feedback,
     // A "+ new diagnosis" reset empties the messages; hide any stale offer.
