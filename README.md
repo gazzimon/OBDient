@@ -11,12 +11,9 @@ for the core diagnosis.
 
 > Built for the Tether QVAC Hackathon — **Mobile track**.
 
-> 🧠 **The big picture:** this README is the technical proof. For the *why* and where
-> this is going — a private brain inside every car — read **[VISION.md](./VISION.md)**.
-
 ### 🎥 Watch the 2-minute demo
 
-[![OBDient demo — on-device AI car diagnostics](https://img.youtube.com/vi/AU2e477oyn0/maxresdefault.jpg)](https://youtu.be/AU2e477oyn0)
+[![OBDient demo — on-device AI car diagnostics](https://img.youtube.com/vi/AU2e477oyn0/maxresdefault.jpg)](https://youtu.be/mNo5SzqYsbA?si=82YyBD1KvCnMX0c4)
 
 > Real phone, real ELM327 adapter, real car — diagnosing live, fully on-device.
 
@@ -131,38 +128,6 @@ through a shared DHT topic and replicates append-only feeds with **no central se
 > DHT, not handset ↔ handset. CARpsy, SHIMI, the 4-layer RAG, human distillation, and
 > the trust registry all run today on real hardware.
 
----
-
-## How it works (at a glance)
-
-```
-        User message
-             │
-             ▼
-   ┌────────────────────┐  Phase 1 · deterministic intake — no ML, no cloud, 0 tokens
-   │   Intake ladder    │◄─┐  asks ONE question per turn (vehicle id, symptoms,
-   └─────────┬──────────┘  │  senses, conditions)…
-             │             └──  …looping over several turns until the case file is complete
-             ▼  case file (brief) ready
-   ┌────────────────────┐  Phase 2 · on-device, offline
-   │  CARpsy (junior)   │  preliminary diagnosis, grounded by 4-layer retrieval:
-   │  + 4-layer RAG     │──┬─ 0 · Claude-learned knowledge (verified / unverified)
-   └─────────┬──────────┘  ├─ 1 · SHIMI hierarchical graph (SKOS)
-             │             ├─ 2 · on-device vector RAG (EmbeddingGemma)
-             │             └─ 3 · P2P pattern layer (fedRAG)
-             ▼
-   ┌────────────────────┐  validates the diagnosis vs the car's real data →
-   │ Deterministic gate │  marks it UNCONFIRMED if it fails (a filter, never a retry)
-   └─────────┬──────────┘
-             ▼
-   Junior diagnosis, shown to the owner in plain language
-             │
-             ▼  owner taps "senior review"  (explicit opt-in — the ONLY cloud call)
-   ┌────────────────────┐  Phase 3 · cloud, opt-in
-   │  Claude (senior)   │  redacted brief + junior hypothesis (never VIN/plate),
-   │  re-checked by gate │  re-validated by the same gate; gate-passed answer is
-   └────────────────────┘  stored on-device for offline reuse
-```
 
 📖 **Deep dive:** the full intake → junior → senior pipeline, the 4-layer retrieval
 pipeline, the gate + knowledge-return learning loop, and the end-to-end data flow now
