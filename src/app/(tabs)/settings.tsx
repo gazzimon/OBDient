@@ -2,7 +2,7 @@
 // QVAC on-device model status, and alert preferences. QVAC grouped-card style.
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Switch, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider';
@@ -16,9 +16,6 @@ import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
-import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
-import { runP2PSpike } from '@/core/utils/p2p-spike';
-import { AuditPanel } from '@/presentation/components/settings/AuditPanel';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -55,43 +52,13 @@ export default function SettingsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
-  const claudeApiKey    = useSettingsStore((s) => s.claudeApiKey);
-  const setClaudeApiKey = useSettingsStore((s) => s.setClaudeApiKey);
-  const [apiKeyInput, setApiKeyInput]     = useState(claudeApiKey ?? '');
-  const [showApiKey, setShowApiKey]       = useState(false);
-  const [knowledgeCount, setKnowledgeCount] = useState(claudeKnowledge.count());
-
-  // Refresh knowledge count when screen gains focus (entries grow during chat)
-  useEffect(() => {
-    setKnowledgeCount(claudeKnowledge.count());
-  }, [claudeApiKey]);
-
   const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
   const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
   const contributeCases         = useSettingsStore((s) => s.contributeCases);
   const setContributeCases      = useSettingsStore((s) => s.setContributeCases);
-  const developerMode           = useSettingsStore((s) => s.developerMode);
-  const setDeveloperMode        = useSettingsStore((s) => s.setDeveloperMode);
 
   const [peerCount, setPeerCount]         = useState(0);
   const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
-
-  // C0 spike (PLAN-002 v2): probes Hypercore/Hyperswarm inside the Bare worklet.
-  const [spikeRunning, setSpikeRunning] = useState(false);
-  const [spikeReport, setSpikeReport]   = useState<string | null>(null);
-
-  const handleRunSpike = async () => {
-    if (spikeRunning) return;
-    setSpikeRunning(true);
-    setSpikeReport(null);
-    try {
-      setSpikeReport(await runP2PSpike());
-    } catch (err) {
-      setSpikeReport(`spike crashed: ${String(err instanceof Error ? err.message : err)}`);
-    } finally {
-      setSpikeRunning(false);
-    }
-  };
 
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
@@ -343,62 +310,6 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* ---------- Claude AI ---------- */}
-        <SectionHeader title="Claude AI" />
-
-        <View className="bg-brand-surface rounded-2xl p-4 mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-1 mr-3">
-              <Text className="text-brand-text font-mono text-sm">Anthropic API Key</Text>
-              <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Enables cloud fallback for general questions + quality evaluation
-              </Text>
-            </View>
-            <View className={`px-2 py-0.5 rounded-md border ${claudeApiKey ? 'border-brand-teal' : 'border-brand-muted'}`}>
-              <Text className={`font-mono text-xs ${claudeApiKey ? 'text-brand-teal' : 'text-brand-muted'}`}>
-                {claudeApiKey ? 'CONFIGURED' : 'NOT SET'}
-              </Text>
-            </View>
-          </View>
-
-          {knowledgeCount > 0 && (
-            <View className="flex-row items-center justify-between mb-3 px-1">
-              <Text className="text-brand-muted font-mono text-xs">
-                Knowledge accumulated
-              </Text>
-              <View className="px-2 py-0.5 rounded-md border border-brand-teal">
-                <Text className="text-brand-teal font-mono text-xs">
-                  {knowledgeCount} entr{knowledgeCount === 1 ? 'y' : 'ies'}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          <View className="flex-row items-center gap-2">
-            <TextInput
-              className="flex-1 bg-brand-bg border border-brand-border rounded-xl px-3 py-2.5 text-brand-text font-mono text-xs"
-              placeholder="sk-ant-api03-..."
-              placeholderTextColor={MUTED}
-              value={apiKeyInput}
-              onChangeText={setApiKeyInput}
-              onBlur={() => setClaudeApiKey(apiKeyInput.trim() || null)}
-              secureTextEntry={!showApiKey}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Pressable
-              onPress={() => setShowApiKey((v) => !v)}
-              className="p-2 active:opacity-60"
-            >
-              <MaterialCommunityIcons
-                name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
-                size={18}
-                color={MUTED}
-              />
-            </Pressable>
-          </View>
-        </View>
-
         {/* ---------- Knowledge network ---------- */}
         <SectionHeader title="Knowledge network" />
 
@@ -470,67 +381,13 @@ export default function SettingsScreen() {
           </SettingsRow>
         </View>
 
-        {/* C0 spike — P2P engine probe (Bare worklet). Independent of the
-            Distributed RAG toggle: it tests the substrate, not the feature.
-            Developer-only surface (hidden from end users). */}
-        {developerMode && (
-          <View className="bg-brand-surface rounded-2xl p-4 mb-6">
-            <View className="mb-3">
-              <Text className="text-brand-text font-mono text-sm">P2P engine test (C0)</Text>
-              <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Runs Hypercore + Hyperswarm inside the Bare worklet on this device
-              </Text>
-            </View>
-            <PillButton
-              label={spikeRunning ? 'Running…' : 'Run spike'}
-              onPress={handleRunSpike}
-              loading={spikeRunning}
-            />
-            {spikeReport != null && (
-              <Text
-                className={`font-mono text-xs mt-3 ${
-                  spikeReport.includes('FAIL') || spikeReport.includes('crashed') || spikeReport.includes('aborted')
-                    ? 'text-brand-red'
-                    : 'text-brand-teal'
-                }`}
-                selectable
-              >
-                {spikeReport}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* ---------- Audit (dev) — developer-only surface ---------- */}
-        {developerMode && (
-          <>
-            <SectionHeader title="Instrumentation" />
-            <AuditPanel />
-          </>
-        )}
-
         {/* ---------- About ---------- */}
         <SectionHeader title="About" />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1">
           <SettingsRow>
             <Text className="text-brand-text font-mono text-sm">App version</Text>
-            <Text className="text-brand-teal font-mono text-sm">v0.1.7 (VIN UI)</Text>
-          </SettingsRow>
-          <View className="h-px bg-brand-border" />
-          <SettingsRow>
-            <View className="flex-1 mr-4">
-              <Text className="text-brand-text font-mono text-sm">Developer mode</Text>
-              <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Show the P2P engine test and instrumentation panel
-              </Text>
-            </View>
-            <Switch
-              value={developerMode}
-              onValueChange={setDeveloperMode}
-              trackColor={{ true: MINT, false: '#3A3A3C' }}
-              thumbColor="#F5F5F5"
-            />
+            <Text className="text-brand-teal font-mono text-sm">Beta 2.0.0</Text>
           </SettingsRow>
         </View>
       </ScrollView>

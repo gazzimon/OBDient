@@ -608,8 +608,8 @@ export class DiagnosticIntakeSessionUseCase {
     }
     if (!this.senior.isConfigured()) {
       const msg = state.language === 'es'
-        ? 'El asesor senior no está configurado. Agregá tu clave de Claude en Settings.'
-        : 'The senior advisor is not configured. Add your Claude API key in Settings.';
+        ? 'El asesor senior no está disponible en este momento. Intentá de nuevo más tarde.'
+        : 'The senior advisor is not available right now. Please try again later.';
       return localResult(msg, false);
     }
 
