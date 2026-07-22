@@ -248,7 +248,7 @@ export default function DiagnosticsScreen() {
               <Text className="text-brand-muted font-mono text-sm text-center mt-4 leading-5">
                 Tell me what's going on with your vehicle.{'\n'}
                 I'll collect the case — vehicle, symptoms, OBD data — and bring in
-                the senior diagnostician.
+                the Assistente Sr.
               </Text>
               {/* Informational-use notice (audit I1): shown up-front on the empty
                   state so it stays visible without crowding the active chat. The
@@ -268,7 +268,7 @@ export default function DiagnosticsScreen() {
           {isResponding && (
             <View className="items-start mb-3">
               <View className="bg-brand-surface border border-brand-border rounded-2xl rounded-tl-sm px-4 py-3">
-                <Text className="text-brand-teal font-mono text-xs mb-1">CARpsy</Text>
+                <Text className="text-brand-teal font-mono text-xs mb-1">Assistente Sr</Text>
                 <ActivityIndicator size="small" color={MINT} />
               </View>
             </View>
@@ -298,7 +298,7 @@ export default function DiagnosticsScreen() {
                 <MaterialCommunityIcons name="account-tie" size={16} color="#7C6AFE" />
               )}
               <Text className="font-mono text-sm" style={{ color: '#7C6AFE' }}>
-                {seniorPending ? 'Consulting senior…' : 'Consult senior advisor (Claude)'}
+                {seniorPending ? 'Consulting Assistente Sr…' : 'Consult Assistente Sr'}
               </Text>
             </Pressable>
           </View>

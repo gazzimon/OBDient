@@ -252,15 +252,15 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* ---------- CARpsy on-device model ---------- */}
-        <SectionHeader title="CARpsy Assistant" />
+        {/* ---------- Assistente Sr — on-device (offline) model ---------- */}
+        <SectionHeader title="Assistente Sr" />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
           <View className="flex-row items-center justify-between mb-3">
             <View>
-              <Text className="text-brand-text font-mono text-sm">On-device model</Text>
+              <Text className="text-brand-text font-mono text-sm">Offline mode</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                CARpsy · Qwen3-1.7B · runs offline
+                Runs on your device — no internet needed
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>

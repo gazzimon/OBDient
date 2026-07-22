@@ -9,9 +9,12 @@ interface ChatBubbleProps {
   feedback?: MessageFeedback | undefined;
 }
 
+// One assistant in the UI ("Assistente Sr") — the source (offline model vs cloud)
+// is never surfaced as a model/provider name (Beta V2 §1). The subtle colour
+// difference below is the only hint, and it names nothing.
 const SOURCE_LABEL: Record<string, string> = {
-  carpsy: 'CARpsy',
-  claude: 'Claude',
+  carpsy: 'Assistente Sr',
+  claude: 'Assistente Sr',
 };
 
 const SOURCE_COLOR: Record<string, string> = {
@@ -25,7 +28,7 @@ const AMBER = '#F5A623';
 export function ChatBubble({ message, feedback }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const sourceKey = message.source ?? 'carpsy';
-  const agentLabel = SOURCE_LABEL[sourceKey] ?? 'CARpsy';
+  const agentLabel = SOURCE_LABEL[sourceKey] ?? 'Assistente Sr';
   const agentColor = SOURCE_COLOR[sourceKey] ?? 'text-brand-teal';
 
   // A retrieval that leaned on unverified (Claude-origin) knowledge is flagged
