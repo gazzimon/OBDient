@@ -9,8 +9,6 @@ import { useBluetoothContext } from '@/presentation/providers/BluetoothProvider'
 import { useSettingsVM } from '@/presentation/viewmodels/useSettingsVM';
 import { useOBDStore } from '@/store/obdStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
-import { trustRegistry } from '@/data/datasources/trust-registry';
 import { SectionHeader } from '@/presentation/components/layout/SectionHeader';
 import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
@@ -52,13 +50,8 @@ export default function SettingsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
-  const knowledgeNetworkEnabled = useSettingsStore((s) => s.knowledgeNetworkEnabled);
-  const setKnowledgeNetworkEnabled = useSettingsStore((s) => s.setKnowledgeNetworkEnabled);
   const contributeCases         = useSettingsStore((s) => s.contributeCases);
   const setContributeCases      = useSettingsStore((s) => s.setContributeCases);
-
-  const [peerCount, setPeerCount]         = useState(0);
-  const [trustStats, setTrustStats]       = useState(trustRegistry.stats());
 
   const [showDevices, setShowDevices] = useState(false);
   const [modelLoaded, setModelLoaded]   = useState(qvacSDK.isLoaded());
@@ -69,18 +62,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     setModelLoaded(qvacSDK.isLoaded());
   }, []);
-
-  // Refresh peer count every 5 s while the network is enabled.
-  useEffect(() => {
-    if (!knowledgeNetworkEnabled) { setPeerCount(0); return; }
-    const id = setInterval(() => {
-      setPeerCount(hypercoreKnowledge.peerCount());
-      setTrustStats(trustRegistry.stats());
-    }, 5000);
-    setPeerCount(hypercoreKnowledge.peerCount());
-    setTrustStats(trustRegistry.stats());
-    return () => clearInterval(id);
-  }, [knowledgeNetworkEnabled]);
 
   const handleLoadModel = async () => {
     if (modelLoading || modelLoaded) return;
@@ -310,56 +291,25 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* ---------- Knowledge network ---------- */}
-        <SectionHeader title="Knowledge network" />
+        {/* ---------- Embedded distributed memory (always on) ---------- */}
+        {/* Renamed from "Distributed RAG / Knowledge network": the jargon and the
+            on/off toggle are gone — it's a built-in feature, not a setting. The
+            P2P backend still runs (container.ts forces it on); only richer case
+            sharing stays opt-in below (Contribute cases). */}
+        <SectionHeader title="Embedded distributed memory" />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-4">
           <SettingsRow>
             <View className="flex-1 mr-4">
-              <Text className="text-brand-text font-mono text-sm">Distributed RAG</Text>
+              <Text className="text-brand-text font-mono text-sm">Community knowledge</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Share anonymised diagnostic knowledge with peers via P2P
+                Learns from anonymised diagnoses shared across the community. Built in — always on.
               </Text>
             </View>
-            <Switch
-              value={knowledgeNetworkEnabled}
-              onValueChange={setKnowledgeNetworkEnabled}
-              trackColor={{ false: '#2A2A2A', true: MINT }}
-              thumbColor="#FFFFFF"
-            />
+            <View className="px-2 py-0.5 rounded-md border border-brand-teal">
+              <Text className="text-brand-teal font-mono text-xs">ACTIVE</Text>
+            </View>
           </SettingsRow>
-
-          {knowledgeNetworkEnabled && (
-            <>
-              <View className="flex-row items-center justify-between py-2">
-                <Text className="text-brand-muted font-mono text-xs">Connected peers</Text>
-                <View className={`px-2 py-0.5 rounded-md border ${peerCount > 0 ? 'border-brand-teal' : 'border-brand-muted'}`}>
-                  <Text className={`font-mono text-xs ${peerCount > 0 ? 'text-brand-teal' : 'text-brand-muted'}`}>
-                    {peerCount > 0 ? `${peerCount} peer${peerCount !== 1 ? 's' : ''}` : 'searching…'}
-                  </Text>
-                </View>
-              </View>
-
-              {trustStats.total > 0 && (
-                <View className="flex-row gap-2 pb-2">
-                  <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
-                    <Text className="text-brand-muted font-mono text-xs">Known</Text>
-                    <Text className="text-brand-text font-mono text-sm mt-0.5">{trustStats.total}</Text>
-                  </View>
-                  <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
-                    <Text className="text-brand-muted font-mono text-xs">Trusted</Text>
-                    <Text className="text-brand-teal font-mono text-sm mt-0.5">{trustStats.trusted}</Text>
-                  </View>
-                  {trustStats.silenced > 0 && (
-                    <View className="flex-1 bg-brand-bg rounded-xl px-3 py-2">
-                      <Text className="text-brand-muted font-mono text-xs">Silenced</Text>
-                      <Text className="text-brand-red font-mono text-sm mt-0.5">{trustStats.silenced}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </>
-          )}
         </View>
 
         {/* C1 — contribute validated cases to the harvest seed (PLAN-002 v2).

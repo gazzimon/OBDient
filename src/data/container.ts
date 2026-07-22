@@ -3,7 +3,6 @@
 
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
 import { seniorProxy } from '@/data/datasources/senior-agent.datasource';
-import { useSettingsStore } from '@/store/settingsStore';
 import { OBDRepositoryImpl } from '@/data/repositories/obd.repository.impl';
 import { LLMRepositoryImpl } from '@/data/repositories/llm.repository.impl';
 import { ReportRepositoryImpl } from '@/data/repositories/report.repository.impl';
@@ -19,12 +18,12 @@ import { harvestOutbox } from '@/data/datasources/harvest-outbox.datasource';
 import { claudeKnowledge } from '@/data/datasources/claude-knowledge.datasource';
 import { SaveDiagnosticReportUseCase } from '@/domain/usecases/save-diagnostic-report';
 
-// Initialize Hypercore network conditionally based on persisted user preference.
-// Runs once at startup; safe to call even if the store hasn't hydrated yet
-// (the toggle defaults to false, so nothing starts unless the user opted in).
+// "Embedded distributed memory" (Beta V2): always on — no user toggle. The P2P
+// knowledge network is a built-in feature now, so we force it on at boot rather
+// than reading a (removed) preference. Only richer case sharing stays opt-in
+// (contributeCases). Runs once at startup; safe before the store hydrates.
 void (async () => {
-  const { knowledgeNetworkEnabled } = useSettingsStore.getState();
-  await hypercoreKnowledge.initialize({ enabled: knowledgeNetworkEnabled });
+  await hypercoreKnowledge.initialize({ enabled: true });
 })().catch((err) => {
   // The knowledge network is an optional feature — a failed init (e.g. the
   // worklet couldn't open its feed) must never surface as an uncaught rejection

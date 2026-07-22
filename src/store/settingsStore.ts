@@ -28,7 +28,10 @@ interface SettingsState {
   // Custom GGUF model source: HTTPS URL, local file path, or pear:// key.
   // If null, uses the default SDK bundled model.
   customModelSrc: string | null;
-  // Distributed RAG via Hypercore: join the peer network to receive remote knowledge.
+  // "Embedded distributed memory" (Beta V2): the device joins the P2P knowledge
+  // network to receive/share anonymised diagnostic facts. It is a built-in
+  // feature with no user toggle — on by default; container.ts forces it on at
+  // boot. Richer case sharing stays a separate opt-in ([contributeCases]).
   knowledgeNetworkEnabled: boolean;
   // Opt-in to contribute validated diagnostic cases (redacted brief + gated
   // senior answer + outcome) to the harvest seed (PLAN-002 v2 C1). Separate
@@ -59,7 +62,7 @@ const DEFAULTS = {
   alertVibrationEnabled: true,
   engineOffAutoDisconnectMinutes: 2,
   customModelSrc: null as string | null,
-  knowledgeNetworkEnabled: false,
+  knowledgeNetworkEnabled: true,
   contributeCases: false,
   disclaimerAccepted: false,
 };
