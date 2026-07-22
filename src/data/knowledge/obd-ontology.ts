@@ -110,7 +110,7 @@ const FUEL_SYSTEM: SkosConceptNode = {
   id: 'fuel_system',
   label: 'Fuel system',
   broader: 'powertrain',
-  narrower: ['fuel_mixture', 'fuel_delivery', 'fuel_injectors'],
+  narrower: ['fuel_mixture', 'fuel_delivery', 'fuel_injectors', 'diesel_injection_pump', 'diesel_glow_plugs', 'diesel_particulate_filter'],
   related: ['ignition', 'sensors_engine'],
   dtcs: [],
   conditionIds: [],
@@ -163,6 +163,40 @@ const FUEL_INJECTORS: SkosConceptNode = {
   narrower: [],
   related: ['misfire_cylinder', 'fuel_delivery'],
   dtcs: [],
+  conditionIds: [],
+};
+
+// ---------------------------------------------------------------------------
+// Powertrain — Diesel Fuel System branch
+// ---------------------------------------------------------------------------
+
+const DIESEL_INJECTION_PUMP: SkosConceptNode = {
+  id: 'diesel_injection_pump',
+  label: 'Diesel injection pump metering control',
+  broader: 'fuel_system',
+  narrower: [],
+  related: ['fuel_injectors', 'fuel_delivery'],
+  dtcs: ['P2300', 'P2302', 'P2303', 'P2304-P2305', 'P2306-P2308'],
+  conditionIds: [],
+};
+
+const DIESEL_GLOW_PLUGS: SkosConceptNode = {
+  id: 'diesel_glow_plugs',
+  label: 'Diesel glow plug system',
+  broader: 'fuel_system',
+  narrower: [],
+  related: ['sensors_engine'],
+  dtcs: ['P2510-P2519'],
+  conditionIds: [],
+};
+
+const DIESEL_PARTICULATE_FILTER: SkosConceptNode = {
+  id: 'diesel_particulate_filter',
+  label: 'Diesel Particulate Filter (DPF) regeneration',
+  broader: 'fuel_system',
+  narrower: [],
+  related: ['emissions'],
+  dtcs: ['P2521-P2529'],
   conditionIds: [],
 };
 
@@ -419,6 +453,10 @@ export const OBD_ONTOLOGY: readonly SkosConceptNode[] = [
   FUEL_RICH,
   FUEL_DELIVERY,
   FUEL_INJECTORS,
+  // Diesel
+  DIESEL_INJECTION_PUMP,
+  DIESEL_GLOW_PLUGS,
+  DIESEL_PARTICULATE_FILTER,
   // Emissions
   EMISSIONS,
   CATALYST,

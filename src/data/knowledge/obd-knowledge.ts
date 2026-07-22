@@ -5,7 +5,7 @@
 // This is the corpus indexed into the QVAC RAG vector store at first launch.
 // To extend the knowledge, add entries and bump KNOWLEDGE_VERSION.
 
-export const KNOWLEDGE_VERSION = 3;
+export const KNOWLEDGE_VERSION = 4;
 
 export interface KnowledgeDoc {
   readonly id: string;
@@ -412,4 +412,85 @@ export const OBD_KNOWLEDGE: readonly KnowledgeDoc[] = [
       'worn main/rod bearings. Action: stop the engine immediately; do not restart ' +
       'until oil level and pressure are verified. Severity: critical.',
   },
+  // P23xx: Diesel Fuel Injection Pump Metering Control (Common Rail / Mechanical)
+  {
+    id: 'P2300',
+    conceptId: 'diesel_injection_pump',
+    content:
+      'DTC P2300 — Injection Pump Fuel Metering Control A Circuit Malfunction. The ' +
+      'fuel injection pump control solenoid/actuator is not responding correctly. ' +
+      'Common on diesel engines with mechanical injection pumps (Bosch, Delphi, ' +
+      'Stanadyne). Causes: faulty solenoid valve, wiring harness damage, fuel line ' +
+      'blockage, or injection pump ECU failure. Action: verify fuel pressure and ' +
+      'solenoid voltage; scan for secondary faults. Severity: critical — engine may ' +
+      'not start or run rough.',
+  },
+  {
+    id: 'P2302',
+    conceptId: 'diesel_injection_pump',
+    content:
+      'DTC P2302 — Injection Pump Fuel Metering Control A Circuit Low. The injection ' +
+      'pump metering solenoid voltage or control signal is below expected range. This ' +
+      'is a critical diesel fault indicating loss of fuel delivery control. Causes: ' +
+      'short to ground in the solenoid circuit, corroded connectors, broken wiring, ' +
+      'or PCM/ECM output stage failure. Action: check connector health, measure ' +
+      'resistance on the solenoid (typ. 4-20 ohms), and scan for related P2300/P2301 ' +
+      'codes. Severity: critical — engine will likely stall or not start.',
+  },
+  {
+    id: 'P2303',
+    conceptId: 'diesel_injection_pump',
+    content:
+      'DTC P2303 — Injection Pump Fuel Metering Control B Circuit Malfunction. The ' +
+      'secondary or redundant metering solenoid is faulty. Similar to P2300 but on a ' +
+      'different solenoid valve (pump may have two control stages). Causes: solenoid ' +
+      'coil open/shorted, wiring harness fault, or fuel line restriction. Action: ' +
+      'trace both solenoid circuits; check for P2304/P2305 for more specific faults. ' +
+      'Severity: critical.',
+  },
+  {
+    id: 'P2304-P2305',
+    conceptId: 'diesel_injection_pump',
+    content:
+      'DTC P2304/P2305 — Injection Pump Metering Control B High/Low. Companion codes ' +
+      'to P2303, indicating the secondary solenoid voltage is too high or too low. ' +
+      'Diagnosis: same as P2300/P2302 but on the B circuit. Check for split or ' +
+      'miswired connectors between the pump and ECM. Severity: critical.',
+  },
+  {
+    id: 'P2306-P2308',
+    conceptId: 'diesel_injection_pump',
+    content:
+      'DTC P2306/P2307/P2308 — Injection Pump Metering Control C Circuit. Some large ' +
+      'diesel engines (e.g. Cummins, Detroit) may have three metering stages. These ' +
+      'codes follow the same pattern: verify solenoid coils, wiring harness, fuel ' +
+      'line routing, and fuel delivery quality. Multi-stage faults often indicate a ' +
+      'systemic issue (fuel contamination, high-pressure regulator, or injection ' +
+      'pump wear). Severity: critical.',
+  },
+  {
+    id: 'P2510-P2519',
+    conceptId: 'diesel_glow_plugs',
+    content:
+      'DTC P2510–P2519 — Idle Air Control / Glow Plug System Malfunction. On diesel ' +
+      'engines, glow plugs provide cold-start heat. These codes indicate issues with ' +
+      'the glow plug timer relay, control module, or individual glow plug circuits. ' +
+      'Causes: failed relay, broken glow plugs, wiring faults, or PCM communication ' +
+      'loss. Action: measure voltage at glow plugs (12V nominal during crank), and ' +
+      'check relay continuity. Severity: medium to critical — cold starts will be ' +
+      'difficult in winter.',
+  },
+  {
+    id: 'P2521-P2529',
+    conceptId: 'diesel_particulate_filter',
+    content:
+      'DTC P2521–P2529 — Diesel Particulate Filter (DPF) Regeneration Faults. Modern ' +
+      'diesel engines trap soot in a DPF; the engine actively burns it off (active ' +
+      'regeneration) periodically. These codes mean regeneration is inhibited or ' +
+      'failed. Causes: low engine temp, high water content in fuel, transmission ' +
+      'shifting during regen, or excessive soot buildup. Action: allow a forced ' +
+      'regeneration cycle via scan tool; check for contaminated fuel or oil change ' +
+      'intervals. Severity: medium — prolonged backpressure can stall the engine.',
+  },
 ];
+
