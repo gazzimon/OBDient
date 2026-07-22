@@ -2,7 +2,7 @@
 // All repositories wire themselves to their own datasource singletons.
 
 import { hypercoreKnowledge } from '@/data/datasources/hypercore-knowledge.datasource';
-import { claudeAPI } from '@/data/datasources/claude-api.datasource';
+import { seniorProxy } from '@/data/datasources/senior-agent.datasource';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OBDRepositoryImpl } from '@/data/repositories/obd.repository.impl';
 import { LLMRepositoryImpl } from '@/data/repositories/llm.repository.impl';
@@ -38,11 +38,12 @@ const reportRepo = new ReportRepositoryImpl();
 const carpsy     = new ChatWithQVACUseCase(llmRepo);
 const multiAgent = new MultiAgentChatUseCase(carpsy);
 
-// ADR-0009 senior port over the Claude datasource
+// ADR-0009 senior port over the senior proxy (obdient-seed/src/proxy). The
+// provider/model lives server-side; the app only knows the proxy URL.
 const seniorAgent = {
-  isConfigured: () => claudeAPI.isConfigured(),
+  isConfigured: () => seniorProxy.isConfigured(),
   converse: (history: readonly { role: 'user' | 'assistant'; content: string }[]) =>
-    claudeAPI.converseSenior(history),
+    seniorProxy.converseSenior(history),
 };
 
 // N3a — senior return path: a gate-passed senior diagnosis is stored on-device
