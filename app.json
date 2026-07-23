@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "OBDient",
+    "name": "OBDient Beta",
     "slug": "obdient",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "obdient",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.obdient.app"
+      "bundleIdentifier": "com.obdient.beta"
     },
     "android": {
-      "package": "com.obdient.app",
-      "versionCode": 1,
+      "package": "com.obdient.beta",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",

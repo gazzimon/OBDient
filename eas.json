@@ -15,12 +15,18 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SENIOR_PROXY_URL": "https://136.113.190.191.sslip.io"
       }
     },
     "production": {
       "developmentClient": false,
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SENIOR_PROXY_URL": "https://136.113.190.191.sslip.io"
       }
     }
   }
