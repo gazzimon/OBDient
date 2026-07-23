@@ -28,11 +28,13 @@ import { useKeyboardHeight } from '@/presentation/hooks/useKeyboardHeight';
 import { ChatBubble } from '@/presentation/components/diagnostics/ChatBubble';
 import { DisclaimerNote } from '@/presentation/components/feedback/Disclaimer';
 import { createChatMessage } from '@/domain/entities/chat-message';
+import { useT } from '@/core/i18n';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
 
 export default function DiagnosticsScreen() {
+  const t = useT();
   const connectionState = useOBDStore((s) => s.connectionState);
   const vehicle         = useOBDStore((s) => s.vehicle);
   const isConnected     = connectionState === 'connected';
@@ -148,14 +150,14 @@ export default function DiagnosticsScreen() {
   const confirmNewDiagnosis = useCallback(() => {
     if (!hasConversation) return;
     Alert.alert(
-      'New diagnosis',
-      'The current conversation will be saved to Reports.',
+      t('diag.newTitle'),
+      t('diag.newBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Start new', onPress: () => void archiveAndReset() },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('diag.startNew'), onPress: () => void archiveAndReset() },
       ],
     );
-  }, [hasConversation, archiveAndReset]);
+  }, [hasConversation, archiveAndReset, t]);
 
   return (
     <SafeAreaView className="flex-1 bg-brand-bg" edges={['top']}>
@@ -166,7 +168,7 @@ export default function DiagnosticsScreen() {
             <Text className="text-brand-text font-mono-bold text-base">
               {vehicle
                 ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')
-                : 'Diagnosis'}
+                : t('diag.title')}
             </Text>
             {vehicle?.vin && (
               <Text className="text-brand-teal font-mono text-xs tracking-widest mt-0.5">
@@ -187,7 +189,7 @@ export default function DiagnosticsScreen() {
                   className={`px-3 py-1 active:opacity-70 ${active ? 'bg-brand-pill' : ''}`}
                 >
                   <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
-                    {src === 'cloud' ? 'Cloud' : 'Offline'}
+                    {src === 'cloud' ? t('diag.sourceCloud') : t('diag.sourceOffline')}
                   </Text>
                 </Pressable>
               );
@@ -200,7 +202,7 @@ export default function DiagnosticsScreen() {
           <View className="mx-4 mb-2 flex-row items-center gap-2 bg-brand-surface border border-brand-border rounded-xl px-3 py-2">
             <MaterialCommunityIcons name="bluetooth-off" size={14} color={MUTED} />
             <Text className="text-brand-muted font-mono text-xs flex-1">
-              Adapter not connected — live data unavailable. Connect in Settings.
+              {t('diag.notConnected')}
             </Text>
           </View>
         )}
@@ -218,7 +220,7 @@ export default function DiagnosticsScreen() {
           {codes.length === 0 && loadState === 'done' && (
             <View className="flex-row items-center gap-1">
               <MaterialCommunityIcons name="check-circle-outline" size={14} color={MINT} />
-              <Text className="text-brand-teal font-mono text-xs">No active DTCs</Text>
+              <Text className="text-brand-teal font-mono text-xs">{t('diag.noDtcs')}</Text>
             </View>
           )}
 
@@ -231,7 +233,7 @@ export default function DiagnosticsScreen() {
               }`}
             >
               <Text className="font-mono text-xs" style={{ color: MINT }}>
-                {readingDtcs ? 'Reading…' : codes.length > 0 ? 'Re-read DTCs' : 'Read DTCs'}
+                {readingDtcs ? t('diag.reading') : codes.length > 0 ? t('diag.reReadDtcs') : t('diag.readDtcs')}
               </Text>
             </Pressable>
           )}
@@ -243,7 +245,7 @@ export default function DiagnosticsScreen() {
                 value={mileageText}
                 onChangeText={handleMileageChange}
                 onEndEditing={handleMileageCommit}
-                placeholder="odometer"
+                placeholder={t('diag.odometer')}
                 placeholderTextColor={MUTED}
                 keyboardType="number-pad"
                 maxLength={7}
@@ -270,9 +272,7 @@ export default function DiagnosticsScreen() {
             <View className="flex-1 items-center justify-center px-6">
               <MaterialCommunityIcons name="car-wrench" size={36} color={MUTED} />
               <Text className="text-brand-muted font-mono text-sm text-center mt-4 leading-5">
-                Tell me what's going on with your vehicle.{'\n'}
-                I'll collect the case — vehicle, symptoms, OBD data — and bring in
-                the Assistente Sr.
+                {t('diag.empty')}
               </Text>
               {/* Informational-use notice (audit I1): shown up-front on the empty
                   state so it stays visible without crowding the active chat. The
@@ -322,7 +322,7 @@ export default function DiagnosticsScreen() {
                 <MaterialCommunityIcons name="account-tie" size={16} color="#7C6AFE" />
               )}
               <Text className="font-mono text-sm" style={{ color: '#7C6AFE' }}>
-                {seniorPending ? 'Consulting Assistente Sr…' : 'Consult Assistente Sr'}
+                {seniorPending ? t('diag.consultingSenior') : t('diag.consultSenior')}
               </Text>
             </Pressable>
           </View>
@@ -343,7 +343,7 @@ export default function DiagnosticsScreen() {
             ref={inputRef}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Describe symptoms or ask anything…"
+            placeholder={t('diag.inputPlaceholder')}
             placeholderTextColor={MUTED}
             multiline
             maxLength={500}

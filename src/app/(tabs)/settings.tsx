@@ -14,6 +14,8 @@ import { PillButton } from '@/presentation/components/layout/PillButton';
 import { ConnectionStatus } from '@/presentation/components/feedback/ConnectionStatus';
 import { qvacSDK } from '@/data/datasources/qvac-sdk.datasource';
 import { qvacRag } from '@/data/datasources/qvac-rag.datasource';
+import { useT } from '@/core/i18n';
+import type { AppLanguage } from '@/store/settingsStore';
 
 const MINT = '#2DE1A5';
 const MUTED = '#9A9A9A';
@@ -47,6 +49,9 @@ export default function SettingsScreen() {
   } = useBluetoothContext();
 
   const vm = useSettingsVM();
+  const t = useT();
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
   const connectionState = useOBDStore((s) => s.connectionState);
   const isConnected = connectionState === 'connected';
 
@@ -107,8 +112,32 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: 24, paddingTop: 12 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* ---------- Language (Beta V2 §3) ---------- */}
+        <SectionHeader title={t('set.language')} />
+
+        <View className="bg-brand-surface rounded-2xl p-4 mb-6">
+          <View className="flex-row gap-2">
+            {([['pt', 'Português'], ['es', 'Español'], ['en', 'English']] as const).map(([code, label]) => {
+              const active = language === code;
+              return (
+                <Pressable
+                  key={code}
+                  onPress={() => setLanguage(code as AppLanguage)}
+                  className={`flex-1 py-2 rounded-full items-center ${
+                    active ? 'bg-brand-pill' : 'border border-brand-border'
+                  }`}
+                >
+                  <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         {/* ---------- Vehicle connection ---------- */}
-        <SectionHeader title="Vehicle Connection" />
+        <SectionHeader title={t('set.vehicleConnection')} />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
           <SettingsRow>
@@ -158,7 +187,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* ---------- Alerts ---------- */}
-        <SectionHeader title="Alerts" />
+        <SectionHeader title={t('set.alerts')} />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-6">
           <SettingsRow>
@@ -183,7 +212,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* ---------- Polling ---------- */}
-        <SectionHeader title="Polling" />
+        <SectionHeader title={t('set.polling')} />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
           <Text className="text-brand-muted font-mono text-xs mb-3">
@@ -234,14 +263,14 @@ export default function SettingsScreen() {
         </View>
 
         {/* ---------- Assistente Sr — on-device (offline) model ---------- */}
-        <SectionHeader title="Assistente Sr" />
+        <SectionHeader title={t('set.assistant')} />
 
         <View className="bg-brand-surface rounded-2xl p-4 mb-6">
           <View className="flex-row items-center justify-between mb-3">
             <View>
-              <Text className="text-brand-text font-mono text-sm">Offline mode</Text>
+              <Text className="text-brand-text font-mono text-sm">{t('set.offlineMode')}</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Runs on your device — no internet needed
+                {t('set.offlineModeDesc')}
               </Text>
             </View>
             <View className={`px-2 py-0.5 rounded-md border ${modelLoaded ? 'border-brand-teal' : 'border-brand-muted'}`}>
@@ -296,18 +325,18 @@ export default function SettingsScreen() {
             on/off toggle are gone — it's a built-in feature, not a setting. The
             P2P backend still runs (container.ts forces it on); only richer case
             sharing stays opt-in below (Contribute cases). */}
-        <SectionHeader title="Embedded distributed memory" />
+        <SectionHeader title={t('set.embeddedMemory')} />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1 mb-4">
           <SettingsRow>
             <View className="flex-1 mr-4">
-              <Text className="text-brand-text font-mono text-sm">Community knowledge</Text>
+              <Text className="text-brand-text font-mono text-sm">{t('set.communityKnowledge')}</Text>
               <Text className="text-brand-muted font-mono text-xs mt-0.5">
-                Learns from anonymised diagnoses shared across the community. Built in — always on.
+                {t('set.communityKnowledgeDesc')}
               </Text>
             </View>
             <View className="px-2 py-0.5 rounded-md border border-brand-teal">
-              <Text className="text-brand-teal font-mono text-xs">ACTIVE</Text>
+              <Text className="text-brand-teal font-mono text-xs">{t('set.active')}</Text>
             </View>
           </SettingsRow>
         </View>
@@ -332,11 +361,11 @@ export default function SettingsScreen() {
         </View>
 
         {/* ---------- About ---------- */}
-        <SectionHeader title="About" />
+        <SectionHeader title={t('set.about')} />
 
         <View className="bg-brand-surface rounded-2xl px-4 py-1">
           <SettingsRow>
-            <Text className="text-brand-text font-mono text-sm">App version</Text>
+            <Text className="text-brand-text font-mono text-sm">{t('set.appVersion')}</Text>
             <Text className="text-brand-teal font-mono text-sm">Beta 2.0.0</Text>
           </SettingsRow>
         </View>

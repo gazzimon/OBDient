@@ -17,6 +17,9 @@ export type UnitSystem = 'metric' | 'imperial';
 // Assistant source the user picks in the Diagnosis header (Beta V2 §2.3):
 // 'cloud' = Assistente Sr on the server; 'offline' = on-device model (slower).
 export type SeniorSource = 'offline' | 'cloud';
+// App language (Beta V2 §3) — selectable in Settings. Drives the static UI and
+// the deterministic intake templates. Default pt-BR (launch market).
+export type AppLanguage = 'pt' | 'es' | 'en';
 
 interface SettingsState {
   // Bluetooth address of the last successfully connected ELM327 adapter
@@ -46,6 +49,8 @@ interface SettingsState {
   // Where the Assistente Sr answers from — the Diagnosis header selector.
   // Default 'cloud' (the on-device model is slower). Persisted across sessions.
   seniorSource: SeniorSource;
+  // App language (Settings selector). Default 'pt'. Drives UI + intake templates.
+  language: AppLanguage;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -58,6 +63,7 @@ interface SettingsState {
   setContributeCases: (enabled: boolean) => void;
   setDisclaimerAccepted: (accepted: boolean) => void;
   setSeniorSource: (source: SeniorSource) => void;
+  setLanguage: (language: AppLanguage) => void;
   reset: () => void;
 }
 
@@ -73,6 +79,7 @@ const DEFAULTS = {
   contributeCases: false,
   disclaimerAccepted: false,
   seniorSource: 'cloud' as SeniorSource,
+  language: 'pt' as AppLanguage,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -91,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
       setContributeCases: (enabled) => set({ contributeCases: enabled }),
       setDisclaimerAccepted: (accepted) => set({ disclaimerAccepted: accepted }),
       setSeniorSource: (source) => set({ seniorSource: source }),
+      setLanguage: (language) => set({ language }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -110,6 +118,7 @@ export const useSettingsStore = create<SettingsState>()(
         contributeCases: state.contributeCases,
         disclaimerAccepted: state.disclaimerAccepted,
         seniorSource: state.seniorSource,
+        language: state.language,
       }),
     }
   )

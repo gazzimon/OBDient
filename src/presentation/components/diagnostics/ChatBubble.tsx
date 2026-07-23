@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ChatMessage } from '@/domain/entities/chat-message';
 import type { MessageFeedback } from '@/presentation/viewmodels/useChatVM';
+import { useT } from '@/core/i18n';
 
 interface ChatBubbleProps {
   message: ChatMessage;
@@ -26,6 +27,7 @@ const MINT = '#2DE1A5';
 const AMBER = '#F5A623';
 
 export function ChatBubble({ message, feedback }: ChatBubbleProps) {
+  const t = useT();
   const isUser = message.role === 'user';
   const sourceKey = message.source ?? 'carpsy';
   const agentLabel = SOURCE_LABEL[sourceKey] ?? 'Assistente Sr';
@@ -69,7 +71,7 @@ export function ChatBubble({ message, feedback }: ChatBubbleProps) {
               <View className="flex-row items-center gap-1">
                 <MaterialCommunityIcons name="shield-check-outline" size={12} color={MINT} />
                 <Text className="font-mono text-[10px]" style={{ color: MINT }}>
-                  validated against vehicle data
+                  {t('bubble.validated')}
                 </Text>
               </View>
             ) : (
@@ -77,7 +79,7 @@ export function ChatBubble({ message, feedback }: ChatBubbleProps) {
                 <View className="flex-row items-center gap-1">
                   <MaterialCommunityIcons name="shield-alert-outline" size={12} color={AMBER} />
                   <Text className="font-mono text-[10px]" style={{ color: AMBER }}>
-                    UNCONFIRMED — contradicts vehicle data
+                    {t('bubble.unconfirmed')}
                   </Text>
                 </View>
                 {hardViolations.map((v, i) => (
@@ -94,7 +96,7 @@ export function ChatBubble({ message, feedback }: ChatBubbleProps) {
           <View className="mt-3 pt-2 border-t border-brand-border flex-row items-center gap-1">
             <MaterialCommunityIcons name="alert-outline" size={12} color={AMBER} />
             <Text className="text-brand-muted font-mono text-[10px] flex-shrink">
-              contains unverified suggestion
+              {t('bubble.unverified')}
             </Text>
           </View>
         )}
