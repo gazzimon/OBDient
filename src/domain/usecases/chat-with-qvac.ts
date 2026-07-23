@@ -13,6 +13,9 @@ export interface ChatWithQVACInput {
   // intake with the senior offer instead of running the slow on-device diagnosis;
   // 'offline' (or undefined) keeps the local-first behaviour.
   seniorSource?: 'offline' | 'cloud';
+  // User-selected app language (Beta V2 Settings selector). When set, it pins the
+  // deterministic intake language instead of auto-detecting from the owner's text.
+  language?: 'pt' | 'es' | 'en';
 }
 
 export class ChatWithQVACUseCase {

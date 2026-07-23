@@ -111,7 +111,12 @@ export interface KnowledgeReturnPort {
 // awaiting_senior: the junior already diagnosed from the completed brief; the
 // user can keep chatting locally or explicitly summon the senior (fase 3).
 type Phase = 'intake' | 'awaiting_senior' | 'senior' | 'local_only';
-type Lang = 'es' | 'en';
+type Lang = 'es' | 'en' | 'pt';
+
+// Trilingual message picker for the inline (non-template) strings.
+function pick(lang: Lang, opts: { pt: string; es: string; en: string }): string {
+  return opts[lang];
+}
 
 interface CaseState {
   phase: Phase;
@@ -171,19 +176,36 @@ const EN_WORDS = new Set([
   'the', 'it', 'is', 'my', 'when', 'does', 'and', 'not', 'has', 'since', 'of', 'to',
   'on', 'car', 'runs', 'makes', 'start', 'smoke', 'noise', 'smell', 'idle', 'cold', 'shakes',
 ]);
+// Portuguese, distinctive tokens only (avoid words shared with Spanish so the
+// two Romance languages don't collide). Matched accent-insensitively below.
+const PT_WORDS = new Set([
+  'nao', 'voce', 'muito', 'carro', 'faz', 'fica', 'pega', 'liga', 'ligou', 'acendeu',
+  'painel', 'treme', 'tremendo', 'morre', 'barulho', 'cheiro', 'fumaca', 'forca',
+  'esquenta', 'marcha', 'oi', 'ola', 'bom', 'boa', 'obrigado', 'preciso', 'tenho',
+  'quero', 'quando', 'ajuda', 'ruido', 'gasolina', 'alcool', 'aqui', 'isso', 'tambem',
+]);
 
 function detectLanguage(text: string, previous: Lang): Lang {
   const lower = text.toLowerCase();
-  if (/[¿¡ñ]|á|é|í|ó|ú/.test(lower)) return 'es';
-  const words = lower.split(/[^a-z']+/).filter(Boolean);
+  // Script short-circuits: PT-only (ã/õ/ç) vs ES-only (ñ, ¿, ¡) marks.
+  if (/[ãõ]|ç/.test(lower)) return 'pt';
+  if (/[¿¡ñ]/.test(lower)) return 'es';
+  // Accent-insensitive tokens (á→a, é→e…) so "está"/"você" match their sets.
+  const norm = lower.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const words = norm.split(/[^a-z']+/).filter(Boolean);
   let es = 0;
   let en = 0;
+  let pt = 0;
   for (const w of words) {
     if (ES_WORDS.has(w)) es++;
     if (EN_WORDS.has(w)) en++;
+    if (PT_WORDS.has(w)) pt++;
   }
-  if (es > en) return 'es';
-  if (en > es) return 'en';
+  const max = Math.max(es, en, pt);
+  if (max === 0) return previous;
+  if (pt === max) return 'pt';
+  if (es === max) return 'es';
+  if (en === max) return 'en';
   return previous;
 }
 
@@ -218,6 +240,7 @@ type IdentityField = 'make' | 'model' | 'year' | 'mileage';
 const FIELD_NAMES: Readonly<Record<Lang, Record<IdentityField, string>>> = {
   es: { make: 'la marca', model: 'el modelo', year: 'el año', mileage: 'el kilometraje' },
   en: { make: 'the make', model: 'the model', year: 'the year', mileage: 'the mileage' },
+  pt: { make: 'a marca', model: 'o modelo', year: 'o ano', mileage: 'a quilometragem' },
 };
 
 function templateQuestion(
@@ -255,6 +278,37 @@ function templateQuestion(
           'Buenísimo, lo último para afinar el caso: ¿desde cuándo pasa, y en qué ' +
           'condiciones — en frío, en caliente, en ralentí o acelerando? ¿Le hicieron ' +
           'alguna reparación hace poco?'
+        );
+    }
+  }
+  if (lang === 'pt') {
+    switch (gap) {
+      case 'identity':
+        if (known.length > 0 && missing.length > 0 && missing.length < 4) {
+          const list = missing.map((f) => FIELD_NAMES.pt[f]).join(' e ');
+          return `Já tenho: ${known}. Falta ${list} — pode me passar?`;
+        }
+        return (
+          'Para começar preciso conhecer o veículo. Me diga marca, modelo, ano e ' +
+          'motor (gasolina/álcool/diesel e cilindrada); se souber a quilometragem, ' +
+          'inclua — por exemplo: "Chevrolet Corsa 1.6 flex 2008" (ou "…, 150 mil km").'
+        );
+      case 'symptoms':
+        return symptomHints.length > 0
+          ? `Me conte o que está acontecendo com o carro — preciso de pelo menos um sintoma concreto para diagnosticar. Pelos códigos lidos, costuma aparecer: ${symptomHints.join('; ')}. Você nota algum, ou algo diferente? Diga quando acontece e como se sente.`
+          : 'Me conte o que está acontecendo com o carro — preciso de pelo menos um sintoma concreto. O que ele faz exatamente: barulho, tranco, fumaça, cheiro, falta de força, morre? Me dê o detalhe: quando acontece e o que você sente.';
+      case 'senses':
+        return (
+          'Vamos por partes para pegar o problema. Você OUVE algo estranho (batida, ' +
+          'assobio, chiado)? Sente CHEIRO de algo (gasolina, queimado, doce)? VÊ fumaça ' +
+          'no escapamento (branca, azul, preta) ou alguma luz no painel? SENTE trancos, ' +
+          'vibração ou falta de força? Com um só que você me diga a gente já avança.'
+        );
+      case 'conditions':
+        return (
+          'Ótimo, a última coisa para afinar o caso: desde quando acontece, e em que ' +
+          'condições — a frio, quente, na marcha lenta ou acelerando? Fizeram alguma ' +
+          'reparação recente?'
         );
     }
   }
@@ -418,7 +472,7 @@ export class DiagnosticIntakeSessionUseCase {
     if (state.phase === 'awaiting_senior') {
       // Fase 2 done: the junior diagnosed. Follow-up chat stays local; new
       // details keep enriching the case so a later senior call gets them.
-      this.absorb(sessionId, state, userText);
+      this.absorb(sessionId, state, userText, input.language);
       const result = await this.juniorTurn(sessionId, input);
       return this.senior.isConfigured() ? { ...result, seniorOffer: true } : result;
     }
@@ -515,9 +569,9 @@ export class DiagnosticIntakeSessionUseCase {
 
   // Absorbs one owner message into the case: language, identity, symptoms
   // (confirmed / denied / user-described), notes. Nothing is discarded.
-  private absorb(sessionId: string, state: CaseState, userText: string): void {
+  private absorb(sessionId: string, state: CaseState, userText: string, langOverride?: Lang): void {
     if (!userText) return;
-    state.language = detectLanguage(userText, state.language);
+    state.language = langOverride ?? detectLanguage(userText, state.language);
 
     const parsed = parseVehicleIdentity(userText);
     // The parser's model heuristic grabs leading words from ANY sentence, so a
@@ -571,9 +625,11 @@ export class DiagnosticIntakeSessionUseCase {
   // is the final deterministic step.
   private closeWithSeniorOffer(sessionId: string, state: CaseState): MultiAgentChatResult {
     state.phase = 'awaiting_senior';
-    const msg = state.language === 'es'
-      ? 'Ya tengo el caso armado. Tocá "Assistente Sr" para el diagnóstico completo.'
-      : 'I have your case ready. Tap "Assistente Sr" for the full diagnosis.';
+    const msg = pick(state.language, {
+      pt: 'Já montei o seu caso. Toque em "Assistente Sr" para o diagnóstico completo.',
+      es: 'Ya tengo el caso armado. Tocá "Assistente Sr" para el diagnóstico completo.',
+      en: 'I have your case ready. Tap "Assistente Sr" for the full diagnosis.',
+    });
     this.caseLog.logTurn(sessionId, 'junior', msg);
     return localResult(msg, false, true); // seniorOffer:true
   }
@@ -608,9 +664,11 @@ export class DiagnosticIntakeSessionUseCase {
         : { ...result, rateable: true, gate };
     } catch (err) {
       console.warn('[IntakeSession] local diagnosis failed:', err);
-      const msg = state.language === 'es'
-        ? 'No pude generar el diagnóstico local. Podés consultar al asesor senior o intentar de nuevo.'
-        : 'I could not generate the local diagnosis. You can consult the senior advisor or try again.';
+      const msg = pick(state.language, {
+        pt: 'Não consegui gerar o diagnóstico local. Você pode falar com o Assistente Sr ou tentar de novo.',
+        es: 'No pude generar el diagnóstico local. Podés hablar con el Assistente Sr o intentar de nuevo.',
+        en: 'I could not generate the local diagnosis. You can consult the Assistente Sr or try again.',
+      });
       this.caseLog.logTurn(sessionId, 'junior', msg);
       return localResult(msg, false, this.senior.isConfigured());
     }
@@ -626,9 +684,11 @@ export class DiagnosticIntakeSessionUseCase {
       return localResult('The senior review is only available after a completed local diagnosis.', false);
     }
     if (!this.senior.isConfigured()) {
-      const msg = state.language === 'es'
-        ? 'El asesor senior no está disponible en este momento. Intentá de nuevo más tarde.'
-        : 'The senior advisor is not available right now. Please try again later.';
+      const msg = pick(state.language, {
+        pt: 'O Assistente Sr não está disponível agora. Tente de novo mais tarde.',
+        es: 'El Assistente Sr no está disponible en este momento. Intentá de nuevo más tarde.',
+        en: 'The Assistente Sr is not available right now. Please try again later.',
+      });
       return localResult(msg, false);
     }
 
@@ -693,9 +753,11 @@ export class DiagnosticIntakeSessionUseCase {
       };
     } catch (err) {
       console.warn('[IntakeSession] senior request failed, staying local:', err);
-      const msg = state.language === 'es'
-        ? 'No pude contactar al asesor senior — revisá tu conexión e intentá de nuevo.'
-        : 'I could not reach the senior advisor — check your connection and try again.';
+      const msg = pick(state.language, {
+        pt: 'Não consegui contatar o Assistente Sr — verifique sua conexão e tente de novo.',
+        es: 'No pude contactar al Assistente Sr — revisá tu conexión e intentá de nuevo.',
+        en: 'I could not reach the Assistente Sr — check your connection and try again.',
+      });
       this.caseLog.logTurn(sessionId, 'junior', msg);
       return localResult(msg, false, true); // the offer stays available
     }
@@ -709,13 +771,15 @@ export class DiagnosticIntakeSessionUseCase {
     userText: string,
   ): Promise<MultiAgentChatResult> {
     if (state.seniorHistory.length >= MAX_SENIOR_TURNS * 2) {
-      const capMsg = state.language === 'es'
-        ? 'Esta sesión de diagnóstico llegó a su límite. Empezá una nueva — el caso queda guardado.'
-        : 'This diagnostic session reached its length limit. Please start a new one — the case is saved.';
+      const capMsg = pick(state.language, {
+        pt: 'Esta sessão de diagnóstico chegou ao limite. Comece uma nova — o caso fica salvo.',
+        es: 'Esta sesión de diagnóstico llegó a su límite. Empezá una nueva — el caso queda guardado.',
+        en: 'This diagnostic session reached its length limit. Please start a new one — the case is saved.',
+      });
       this.caseLog.logTurn(sessionId, 'junior', capMsg);
       return localResult(capMsg, false);
     }
-    state.language = detectLanguage(userText, state.language);
+    state.language = input.language ?? detectLanguage(userText, state.language);
 
     // Redact VIN / plate / email from every follow-up turn before it leaves the
     // device (ADR-0009 data contract; audit M3). The initial brief is already

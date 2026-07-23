@@ -139,6 +139,23 @@ describe('intake phase — ladder (fase 1, deterministic)', () => {
     expect(log.turns.map((t) => t.role)).toEqual(['user', 'junior']);
   });
 
+  it('asks the intake question in Portuguese when the language is pinned (pt)', async () => {
+    const junior = fakeJunior();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog());
+
+    const res = await uc.execute('s1', input('meu carro nao liga', { language: 'pt' }));
+    expect(res.text).toContain('marca, modelo, ano'); // PT identity template
+    expect(junior.calls).toHaveLength(0);
+  });
+
+  it('detects Portuguese from the owner text (ç/ã short-circuit)', async () => {
+    const junior = fakeJunior();
+    const uc = new DiagnosticIntakeSessionUseCase(junior, fakeSenior(), fakeLog());
+
+    const res = await uc.execute('s1', input('meu carro está com barulho e fumaça'));
+    expect(res.text).toContain('marca, modelo, ano'); // PT template via detection
+  });
+
   it('full interview ends in a LOCAL diagnosis with the senior offer — Claude is NOT called', async () => {
     const junior = fakeJunior();
     const senior = fakeSenior();

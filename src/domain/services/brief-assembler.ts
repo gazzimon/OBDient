@@ -249,8 +249,8 @@ export function renderBriefRetrievalKey(brief: DiagnosticBrief): string {
   return parts.join('; ');
 }
 
-export function renderLocalDiagnosisPrompt(brief: DiagnosticBrief, language: 'es' | 'en'): string {
-  const replyLanguage = language === 'es' ? 'Spanish' : 'English';
+export function renderLocalDiagnosisPrompt(brief: DiagnosticBrief, language: 'es' | 'en' | 'pt'): string {
+  const replyLanguage = language === 'es' ? 'Spanish' : language === 'pt' ? 'Portuguese' : 'English';
   const lines: string[] = [];
 
   lines.push(
