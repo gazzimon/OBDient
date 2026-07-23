@@ -14,6 +14,9 @@ const mmkvStorage: StateStorage = {
 };
 
 export type UnitSystem = 'metric' | 'imperial';
+// Assistant source the user picks in the Diagnosis header (Beta V2 §2.3):
+// 'cloud' = Assistente Sr on the server; 'offline' = on-device model (slower).
+export type SeniorSource = 'offline' | 'cloud';
 
 interface SettingsState {
   // Bluetooth address of the last successfully connected ELM327 adapter
@@ -40,6 +43,9 @@ interface SettingsState {
   // Whether the user has acknowledged the informational-use disclaimer (audit I1).
   // Gates the first-run modal; once true the modal never shows again.
   disclaimerAccepted: boolean;
+  // Where the Assistente Sr answers from — the Diagnosis header selector.
+  // Default 'cloud' (the on-device model is slower). Persisted across sessions.
+  seniorSource: SeniorSource;
 
   setLastDeviceAddress: (address: string) => void;
   setPollingInterval: (ms: number) => void;
@@ -51,6 +57,7 @@ interface SettingsState {
   setKnowledgeNetworkEnabled: (enabled: boolean) => void;
   setContributeCases: (enabled: boolean) => void;
   setDisclaimerAccepted: (accepted: boolean) => void;
+  setSeniorSource: (source: SeniorSource) => void;
   reset: () => void;
 }
 
@@ -65,6 +72,7 @@ const DEFAULTS = {
   knowledgeNetworkEnabled: true,
   contributeCases: false,
   disclaimerAccepted: false,
+  seniorSource: 'cloud' as SeniorSource,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -82,6 +90,7 @@ export const useSettingsStore = create<SettingsState>()(
       setKnowledgeNetworkEnabled: (enabled) => set({ knowledgeNetworkEnabled: enabled }),
       setContributeCases: (enabled) => set({ contributeCases: enabled }),
       setDisclaimerAccepted: (accepted) => set({ disclaimerAccepted: accepted }),
+      setSeniorSource: (source) => set({ seniorSource: source }),
 
       reset: () => set(DEFAULTS),
     }),
@@ -100,6 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
         knowledgeNetworkEnabled: state.knowledgeNetworkEnabled,
         contributeCases: state.contributeCases,
         disclaimerAccepted: state.disclaimerAccepted,
+        seniorSource: state.seniorSource,
       }),
     }
   )

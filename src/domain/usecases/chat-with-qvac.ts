@@ -9,6 +9,10 @@ export interface ChatWithQVACInput {
   troubleCodes: readonly TroubleCode[];
   parameters: ObdParameterSnapshot;
   history: readonly ChatTurn[];
+  // User's chosen assistant source (Beta V2 header selector). 'cloud' closes the
+  // intake with the senior offer instead of running the slow on-device diagnosis;
+  // 'offline' (or undefined) keeps the local-first behaviour.
+  seniorSource?: 'offline' | 'cloud';
 }
 
 export class ChatWithQVACUseCase {

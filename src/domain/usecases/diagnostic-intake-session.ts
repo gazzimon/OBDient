@@ -465,6 +465,12 @@ export class DiagnosticIntakeSessionUseCase {
     if (hard.ready && interviewDone) {
       // Diagnose when there is anything to diagnose from (symptom OR OBD).
       if (hasSymptom || obdPresent) {
+        // Beta V2 §2.5: cloud-source users skip the slow on-device diagnosis.
+        // The deterministic intake closes with the senior offer as its final
+        // step; the owner taps "Assistente Sr" for the full diagnosis.
+        if (input.seniorSource === 'cloud' && this.senior.isConfigured()) {
+          return this.closeWithSeniorOffer(sessionId, state);
+        }
         return this.localDiagnosis(sessionId, state, input, brief);
       }
       // Vehicle facts OK but zero evidence — nothing to diagnose. Plain chat.
@@ -557,6 +563,19 @@ export class DiagnosticIntakeSessionUseCase {
     }
 
     if (state.notes.length < MAX_NOTES) state.notes.push(userText);
+  }
+
+  // ── Beta V2 §2.5: close the intake with the senior offer (cloud source) ──
+  // No on-device diagnosis is run — the owner explicitly chose the cloud
+  // assistant, and the local model is slow. The case is ready; the senior offer
+  // is the final deterministic step.
+  private closeWithSeniorOffer(sessionId: string, state: CaseState): MultiAgentChatResult {
+    state.phase = 'awaiting_senior';
+    const msg = state.language === 'es'
+      ? 'Ya tengo el caso armado. Tocá "Assistente Sr" para el diagnóstico completo.'
+      : 'I have your case ready. Tap "Assistente Sr" for the full diagnosis.';
+    this.caseLog.logTurn(sessionId, 'junior', msg);
+    return localResult(msg, false, true); // seniorOffer:true
   }
 
   // ── Fase 2: preliminary diagnosis by the on-device junior (0 cloud tokens) ──

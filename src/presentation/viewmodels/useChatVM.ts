@@ -4,6 +4,7 @@
 import { useState, useCallback } from 'react';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { container } from '@/data/container';
 import { createChatMessage } from '@/domain/entities/chat-message';
 import type { ChatSource } from '@/domain/entities/chat-message';
@@ -33,6 +34,7 @@ export function useChatVM() {
 
   const vehicle       = useOBDStore((s) => s.vehicle);
   const parameters    = useOBDStore((s) => s.parameters);
+  const seniorSource  = useSettingsStore((s) => s.seniorSource);
   const activeSession = useSessionStore((s) => s.activeSession);
   const addChatMessage = useSessionStore((s) => s.addChatMessage);
   const pendingMileage = useSessionStore((s) => s.pendingMileage);
@@ -74,6 +76,7 @@ export function useChatVM() {
         troubleCodes: codes,
         parameters,
         history,
+        seniorSource,
       });
 
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
@@ -91,7 +94,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, messages, vehicle, mileage, codes, parameters, addChatMessage, ensureSession]);
+  }, [isResponding, messages, vehicle, mileage, codes, parameters, seniorSource, addChatMessage, ensureSession]);
 
   // Auto-sends the initial QVAC assessment after DTCs are read
   const sendInitialAssessment = useCallback(async (prompt: string) => {
@@ -106,6 +109,7 @@ export function useChatVM() {
         troubleCodes: codes,
         parameters,
         history: [{ role: 'user', content: prompt }],
+        seniorSource,
       });
       const source: ChatSource = 'source' in result ? result.source : 'carpsy';
       const assistantMsg = createChatMessage('assistant', result.text, source, result.gate);
@@ -122,7 +126,7 @@ export function useChatVM() {
     } finally {
       setIsResponding(false);
     }
-  }, [isResponding, vehicle, mileage, codes, parameters, addChatMessage, ensureSession]);
+  }, [isResponding, vehicle, mileage, codes, parameters, seniorSource, addChatMessage, ensureSession]);
 
   // Fase 3 opt-in: the user taps "senior advisor" — the ONE Claude call with
   // the deterministic brief + junior hypothesis. Everything before this is free.

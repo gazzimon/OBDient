@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useOBDStore } from '@/store/obdStore';
 import { useSessionStore } from '@/store/sessionStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { container } from '@/data/container';
 import { useDiagnosticsVM } from '@/presentation/viewmodels/useDiagnosticsVM';
 import { useChatVM } from '@/presentation/viewmodels/useChatVM';
@@ -35,6 +36,10 @@ export default function DiagnosticsScreen() {
   const connectionState = useOBDStore((s) => s.connectionState);
   const vehicle         = useOBDStore((s) => s.vehicle);
   const isConnected     = connectionState === 'connected';
+
+  // Assistant source selector (Beta V2 §2.3) — offline (on-device) vs cloud.
+  const seniorSource    = useSettingsStore((s) => s.seniorSource);
+  const setSeniorSource = useSettingsStore((s) => s.setSeniorSource);
 
   const activeSession     = useSessionStore((s) => s.activeSession);
   const startSession      = useSessionStore((s) => s.startSession);
@@ -168,6 +173,25 @@ export default function DiagnosticsScreen() {
                 {vehicle.vin}
               </Text>
             )}
+          </View>
+
+          {/* Assistant source selector — offline (on-device) vs cloud. Default
+              cloud; offline is slower. Persisted in settings. */}
+          <View className="flex-row rounded-full border border-brand-border overflow-hidden">
+            {(['cloud', 'offline'] as const).map((src) => {
+              const active = seniorSource === src;
+              return (
+                <Pressable
+                  key={src}
+                  onPress={() => setSeniorSource(src)}
+                  className={`px-3 py-1 active:opacity-70 ${active ? 'bg-brand-pill' : ''}`}
+                >
+                  <Text className={`font-mono text-xs ${active ? 'text-brand-bg' : 'text-brand-muted'}`}>
+                    {src === 'cloud' ? 'Cloud' : 'Offline'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 

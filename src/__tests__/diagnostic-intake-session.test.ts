@@ -164,6 +164,24 @@ describe('intake phase — ladder (fase 1, deterministic)', () => {
     expect(prompt).toContain('Reply in Spanish');
   });
 
+  it('cloud source closes the intake with the senior offer — no local diagnosis (Beta V2 §2.5)', async () => {
+    const junior = fakeJunior();
+    const senior = fakeSenior(); // configured
+    const uc = new DiagnosticIntakeSessionUseCase(junior, senior, fakeLog());
+    const codes = [dtc('P0335')];
+    const cloud = { troubleCodes: codes, seniorSource: 'cloud' as const };
+
+    await uc.execute('s1', input('no arranca', cloud));
+    await uc.execute('s1', input('es un chevrolet corsa 2008 1.6 nafta, 150 mil km', cloud));
+    const res = await uc.execute('s1', input('desde hace una semana, en frio', cloud));
+
+    // The intake closes with the senior offer; the slow on-device model is skipped
+    // and the senior is only called on explicit opt-in (requestSenior).
+    expect(res.seniorOffer).toBe(true);
+    expect(junior.calls).toHaveLength(0);
+    expect(senior.calls).toHaveLength(0);
+  });
+
   it('requestSenior makes the ONE senior call: brief + interview answers + junior hypothesis', async () => {
     const junior = fakeJunior();
     const senior = fakeSenior();
